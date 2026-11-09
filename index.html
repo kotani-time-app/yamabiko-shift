@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>やまびこシフト</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f3ee; --card:#fff; --ink:#2b2420; --sub:#7a6e66; --line:#e7ded5;
+  --accent:#c2552d; --accent-soft:#fbe9e1; --ok:#2f7d5b; --ok-soft:#e3f2ea;
+  --time:#2d5f9a; --time-soft:#e4eefa; --off:#a33; --off-soft:#f8e3e3;
+  --sat:#2d5f9a; --sun:#c0392b; --r:12px; --lineg:#06C755;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans JP",system-ui,sans-serif;font-size:15px;line-height:1.5}
+button,select,input,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;padding:12px 16px 0}
+header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.04em}
+header h1 small{font-weight:400;opacity:.7;font-size:12px;margin-left:6px}
+nav{display:flex;gap:2px;margin-top:10px;overflow-x:auto}
+nav button{flex:1 1 auto;background:none;border:0;color:#fff;opacity:.6;padding:8px 4px;font-size:14px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button.on{opacity:1;border-color:var(--accent);font-weight:700}
+main{max-width:980px;margin:0 auto;padding:16px 14px 120px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px}
+.muted{color:var(--sub);font-size:13px}
+.notice{background:var(--accent-soft);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;font-size:14px}
+.notice.ok{background:var(--ok-soft)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label.f{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+input[type=text],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+textarea{min-height:70px;resize:vertical}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chip[style*="--sc"]{border-color:var(--sc);color:var(--sc);font-weight:700}
+.chip.on[style*="--sc"]{background:var(--sc);color:#fff}
+.btn{border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:#efe7df;text-align:center}
+.btn.primary{background:var(--accent);color:#fff;font-weight:700}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.line{background:var(--lineg);color:#fff;font-weight:700;text-decoration:none;display:flex;align-items:center;justify-content:center}
+.monthbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
+.monthbar .m{font-size:20px;font-weight:700}
+.monthbar button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:18px}
+.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#eee;color:var(--sub)}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.lock{background:var(--off-soft);color:var(--off)}
+.badge.warn{background:#fff3d6;color:#8a5a00}
+/* submit */
+.days{display:flex;flex-direction:column;gap:6px}
+.day{display:grid;grid-template-columns:56px 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.day .d{font-weight:700;text-align:center;line-height:1.15}
+.day .d small{display:block;font-weight:400;font-size:12px}
+.day.sat .d{color:var(--sat)} .day.sun .d{color:var(--sun)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.seg button{border:1px solid var(--line);background:#faf8f6;border-radius:8px;padding:7px 2px;cursor:pointer;font-size:13px}
+.seg button.on.any{background:var(--ok);color:#fff;border-color:var(--ok)}
+.seg button.on.time{background:var(--time);color:#fff;border-color:var(--time)}
+.seg button.on.off{background:var(--off);color:#fff;border-color:var(--off)}
+.times{grid-column:2;display:flex;gap:6px;align-items:center}
+.times select{padding:6px 8px;width:auto;flex:1}
+.bulk{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.deftime{background:var(--time-soft);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.deftime .row select{flex:1;width:auto;padding:6px 8px}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;justify-content:center;z-index:30}
+.savebar .info{font-size:13px;color:var(--sub);flex:1;max-width:420px}
+/* calendar */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal .wh{font-size:11px;text-align:center;color:var(--sub)}
+.cal .wh.sat{color:var(--sat)} .cal .wh.sun{color:var(--sun)}
+.calcard{padding:10px}
+.cal button{min-height:72px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;padding:2px 2px 3px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;line-height:1.15;text-align:left;min-width:0;overflow:hidden}
+.cal button .hd{display:flex;justify-content:space-between;align-items:baseline;gap:1px}
+.cal button .n{font-size:12px;font-weight:700}
+.cal button .a{font-size:9px;color:var(--sub);white-space:nowrap}
+.cal button .pp{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-weight:500}
+.cal button .tt{font-size:9px;color:var(--sub);white-space:nowrap;overflow:hidden}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:2px;vertical-align:1px}
+.cal button.l1{background:#fdecea} .cal button.l2{background:#fffaf0} .cal button.l3{background:#f3faf6}
+.cal button.sel{outline:2px solid var(--ink);outline-offset:-1px}
+.cal button.sat .n{color:var(--sat)} .cal button.sun .n{color:var(--sun)}
+.pc{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:8px 0}
+.pc .wh{font-size:11px;text-align:center;color:var(--sub)}
+.pc .wh.sat{color:var(--sat)} .pc .wh.sun{color:var(--sun)}
+.pcd{min-height:58px;border:1px solid var(--line);border-radius:6px;padding:2px 3px;font-size:10px;line-height:1.2;background:#fff;overflow:hidden;min-width:0}
+.pcd b{display:block;font-size:11px}
+.pcd.sat b{color:var(--sat)} .pcd.sun b{color:var(--sun)}
+.pcd.work{background:#f3faf6;border-color:#cfe7da}
+.pcd .st{font-weight:700;white-space:nowrap;overflow:hidden;display:block}
+.pcd .tm{display:block;word-break:break-all;font-size:9.5px}
+.pcd .rest{color:var(--sub);font-weight:700;display:block}
+.pcd .ghost{color:#b9aea6;display:block;word-break:break-all;font-size:9.5px}
+.pcsum{font-size:13px;font-weight:700;margin-top:4px}
+.pclegend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub)}
+.storekey{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-top:8px}
+.mgr{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);gap:8px}
+.mgr:last-child{border:0}
+.toggle{border:1px solid var(--line);background:#faf8f6;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap}
+.toggle.on{background:var(--ok);border-color:var(--ok);color:#fff}
+/* day editor */
+.daydetail h3{margin:0 0 4px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+.person{padding:10px 0;border-bottom:1px solid var(--line)}
+.person:last-child{border:0}
+.person .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.person .nm{font-weight:700}
+.tag{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tag.any{background:var(--ok-soft);color:var(--ok)} .tag.time{background:var(--time-soft);color:var(--time)} .tag.off{background:var(--off-soft);color:var(--off)} .tag.none{background:#eee;color:var(--sub)}
+.dec{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.dec button{border:1px solid var(--line);background:#faf8f6;border-radius:8px;padding:7px;cursor:pointer;font-size:13px}
+.dec button.on.work{background:var(--ok);color:#fff;border-color:var(--ok)}
+.dec button.on.rest{background:#8a7f78;color:#fff;border-color:#8a7f78}
+.segs{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+.sg{display:grid;grid-template-columns:1.3fr 1fr auto 1fr 30px;gap:4px;align-items:center;background:#fff;border:1px solid var(--line);border-left:5px solid var(--sc,#999);border-radius:8px;padding:6px}
+.sg select[data-f=store]{color:var(--sc);font-weight:700}
+.sg select{padding:6px 4px;font-size:13px}
+.sg .x{border:0;background:none;cursor:pointer;font-size:16px;color:var(--sub)}
+.addseg{border:1px dashed var(--ok);background:none;color:var(--ok);border-radius:8px;padding:6px;cursor:pointer;font-size:13px}
+.navday{display:flex;gap:8px;margin-top:12px}
+.navday button{flex:1}
+.sechead{font-size:12px;color:var(--sub);margin:14px 0 2px;font-weight:700}
+/* staff list */
+.stafflist{display:flex;flex-direction:column}
+.staff{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:8px 0;gap:8px}
+details.sd summary{list-style:none;cursor:pointer}
+details.sd summary::-webkit-details-marker{display:none}
+.mini{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:8px 0}
+.mini div{font-size:10px;text-align:center;border-radius:6px;padding:3px 0;background:#faf8f6;line-height:1.2;word-break:break-all}
+.mini div b{display:block;font-weight:400;color:var(--sub);font-size:10px}
+.mini div.any{background:var(--ok-soft);color:var(--ok)} .mini div.time{background:var(--time-soft);color:var(--time)} .mini div.off{color:var(--off)}
+/* published view */
+.pday{padding:8px 0;border-bottom:1px solid var(--line)}
+.pday:last-child{border:0}
+.pday .dh{font-weight:700;font-size:14px}
+.pday .dh.sat{color:var(--sat)} .pday .dh.sun{color:var(--sun)}
+.pline{display:flex;justify-content:space-between;font-size:14px;padding:2px 0 2px 10px}
+.mine{background:var(--ok-soft);border-radius:8px}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;opacity:0;transition:.2s;pointer-events:none;max-width:90vw}
+.toast.show{opacity:1}
+.empty{text-align:center;color:var(--sub);padding:24px 10px}
+.hide{display:none!important}
+@media(min-width:720px){.days{display:grid;grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>シフト <small id="hdrStore"></small></h1>
+  <nav id="nav">
+    <button data-v="submit" class="on">希望を出す</button>
+    <button data-v="shift">シフト表</button>
+    <button data-v="list" class="admin hide">シフト作成</button>
+    <button data-v="settings" class="admin hide">⚙ 設定</button>
+  </nav>
+</header>
+<main>
+  <div id="status" class="notice">読み込み中…</div>
+
+  <!-- 希望を出す -->
+  <section id="v-submit" class="hide">
+    <div class="monthbar">
+      <button id="mPrev" aria-label="前の月">‹</button>
+      <div style="text-align:center"><div class="m" id="mLabel"></div><div id="mState"></div></div>
+      <button id="mNext" aria-label="次の月">›</button>
+    </div>
+    <div class="notice" id="ruleNote"></div>
+    <div class="card">
+      <h2>あなたの情報</h2>
+      <label class="f" for="myName">名前</label>
+      <input type="text" id="myName" placeholder="例：山田 花子" maxlength="30">
+      <label class="f">所属店舗（1つ選択・次回以降も記憶されます）</label>
+      <div class="chips" id="myStores"></div>
+    </div>
+    <div class="card">
+      <h2>日ごとの希望</h2>
+      <div class="muted" style="margin-bottom:10px">◎＝何時でもOK／時間指定＝その時間帯なら出勤可／×＝休み希望</div>
+      <div class="deftime">
+        <div style="font-size:13px;font-weight:700;color:var(--time);margin-bottom:6px">基本の時間（時間指定の日に使われます）</div>
+        <div class="row"><select id="defS"></select>〜<select id="defE"></select></div>
+        <div class="muted" id="defHint" style="margin-top:6px"></div>
+      </div>
+      <div class="bulk">
+        <button class="btn small" data-bulk="time">未入力をすべて基本の時間</button>
+        <button class="btn small" data-bulk="any">未入力をすべて◎</button>
+        <button class="btn small" data-bulk="off">未入力をすべて×</button>
+        <button class="btn small" data-bulk="clear">すべてクリア</button>
+      </div>
+      <div class="days" id="days"></div>
+      <label class="f" for="myNote">備考（任意）</label>
+      <textarea id="myNote" maxlength="400" placeholder="例：月の勤務は10回までを希望／テスト期間のため15日以降は少なめで"></textarea>
+    </div>
+  </section>
+
+  <!-- シフト表（公開済み） -->
+  <section id="v-shift" class="hide">
+    <div class="monthbar">
+      <button id="pPrev" aria-label="前の月">‹</button>
+      <div style="text-align:center"><div class="m" id="pLabel"></div><div id="pState"></div></div>
+      <button id="pNext" aria-label="次の月">›</button>
+    </div>
+    <div id="pBody"></div>
+  </section>
+
+  <!-- シフト作成（店長） -->
+  <section id="v-list" class="hide">
+    <div class="monthbar">
+      <button id="lPrev" aria-label="前の月">‹</button>
+      <div style="text-align:center"><div class="m" id="lLabel"></div><div id="lState"></div></div>
+      <button id="lNext" aria-label="次の月">›</button>
+    </div>
+    <div class="chips" id="storeFilter" style="margin-bottom:12px"></div>
+    <div class="card calcard">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">シフトカレンダー</h2>
+        <span class="muted">可＝出勤可能人数／名前＝出勤決定</span>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="storekey" id="storeKey"></div>
+    </div>
+    <div class="card daydetail" id="dayDetail"></div>
+    <div class="card">
+      <h2>スタッフ別シフト・提出状況 <span class="muted" id="subCount"></span></h2>
+      <div class="muted" style="margin-bottom:4px">名前をタップすると、その人の1か月のシフトがカレンダーで見られます。</div>
+      <div class="stafflist" id="staffList"></div>
+    </div>
+    <div class="card">
+      <h2>LINEで連絡</h2>
+      <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <a class="btn line" id="lineAsk" target="_blank" rel="noopener">LINEで希望提出をお願いする</a>
+        <a class="btn line" id="lineRemind" target="_blank" rel="noopener">未提出の人にLINEで催促</a>
+      </div>
+      <div class="muted" style="margin-top:8px">LINEが開くので、送り先（スタッフのグループなど）を選ぶだけで送れます。</div>
+    </div>
+    <div class="card">
+      <h2>シフトを公開・共有</h2>
+      <div id="pubState" class="muted" style="margin-bottom:10px"></div>
+      <button class="btn primary" id="pubBtn" style="width:100%">この月のシフトを公開する</button>
+      <div class="muted" style="margin:12px 0 6px">LINEに送る（<span id="lineStoreName"></span>のシフト）</div>
+      <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <a class="btn line" id="lineShift1" target="_blank" rel="noopener">LINEで送る（1日〜15日）</a>
+        <a class="btn line" id="lineShift2" target="_blank" rel="noopener">LINEで送る（16日〜月末）</a>
+        <button class="btn" id="copyShift">シフト表をテキストでコピー</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>受付の停止</h2>
+      <div class="muted" style="margin-bottom:8px">通常は不要です（締切後も未提出の人は提出できます）。締切後の提出も止めたいときだけ使います。</div>
+      <button class="btn" id="lockBtn" style="width:100%"></button>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="v-settings" class="hide">
+    <div class="card owneronly hide">
+      <h2>シフト作成を許可する人</h2>
+      <div class="muted" style="margin-bottom:6px">許可した人だけが「シフト作成」と「設定」を開けます（オーナーのあなたは常に可）。一覧に出ない人は、先に「希望を出す」で名前を保存してもらってください。</div>
+      <div id="mgrList"></div>
+    </div>
+    <div class="card">
+      <h2>表示名（あだ名）</h2>
+      <div class="muted" style="margin-bottom:6px">カレンダー・シフト表・LINEに送るシフトなど、アプリ内の表示すべてに使われます（2〜3文字がおすすめ）。空欄なら登録名を表示します。入力して枠の外をタップすると保存されます。</div>
+      <div id="nickList"></div>
+    </div>
+    <div class="card">
+      <h2>店舗名</h2>
+      <div id="storeInputs"></div>
+      <button class="btn small" id="addStore" style="margin-top:8px">＋ 店舗を追加</button>
+      <div class="muted" style="margin-top:8px">※店舗名を変えると、登録済みの所属店舗や作成済みのシフトの店舗は自動では変わりません。名前の変更は運用を始める前に済ませてください。</div>
+    </div>
+    <div class="card">
+      <h2>スタッフが選べる時間帯</h2>
+      <div class="row">
+        <div style="flex:1"><label class="f">最も早い開始</label><select id="sOpen"></select></div>
+        <div style="flex:1"><label class="f">最も遅い終了</label><select id="sClose"></select></div>
+      </div>
+      <label class="f">提出締切（対象月の前月の何日まで）</label>
+      <select id="sDeadline"></select>
+      <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
+    </div>
+    <button class="btn primary" id="saveSettings">設定を保存</button>
+  </section>
+</main>
+
+<div class="savebar hide" id="saveBar">
+  <span class="info" id="saveInfo"></span>
+  <button class="btn primary" id="saveBtn">提出する</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const $$ = s => [...document.querySelectorAll(s)];
+  const WD = ['日','月','火','水','木','金','土'];
+  // ===== 設定（LINE Developers の値） =====
+  const LIFF_ID = '__LIFF_ID__';
+  const API_URL = 'https://lgdplsrkjuyjbwotkvov.supabase.co/functions/v1/shift-api';
+  const PAGE_URL = 'https://liff.line.me/' + LIFF_ID;
+  // =====================================
+  const DEV = new URLSearchParams(location.search).get('devtoken');   // 動作確認用
+  const DEFAULTS = { stores:['店舗1','店舗2','店舗3'], open:'10:00', close:'27:00', deadline:20, locked:{} };
+
+  const S = {
+    db:null, uid:null, admin:false, canWrite:true,
+    settings:{...DEFAULTS}, mine:null, all:[], sched:{}, schedExists:{}, pub:{}, view:'submit',
+    month: nextMonth(), listMonth: nextMonth(), pubMonth: nextMonth(), storeFilter:'', pubStore:'mine', selDay:1,
+    draft:null, dirty:false, loaded:{settings:false, mine:false}, subs:{}
+  };
+
+  // ---------- helpers ----------
+  function nextMonth(){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+1); return ym(d); }
+  function ym(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function shift(m,n){ const [y,mo]=m.split('-').map(Number); return ym(new Date(y,mo-1+n,1)); }
+  function daysIn(m){ const [y,mo]=m.split('-').map(Number); return new Date(y,mo,0).getDate(); }
+  function wd(m,d){ const [y,mo]=m.split('-').map(Number); return new Date(y,mo-1,d).getDay(); }
+  function mLabel(m){ const [y,mo]=m.split('-'); return `${y}年${Number(mo)}月`; }
+  function mNum(m){ return Number(m.slice(5)); }
+  const toMin=t=>{const[h,mm]=t.split(':').map(Number);return h*60+mm};
+  const fromMin=t=>String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+  function range(a,b,step){ const o=[]; for(let t=toMin(a);t<=toMin(b);t+=step) o.push(fromMin(t)); return o; }
+  function times(){ return range(S.settings.open||'10:00', S.settings.close||'27:00', 15); }   // スタッフ用 15分刻み
+  const ALL15 = range('00:00','30:00',15);                                                       // 店長用
+  const ALL30 = range('00:00','30:00',30);
+  function lab(t){ const [h,m]=t.split(':'); const H=Number(h); return (H>=24?'翌'+(H-24):H)+':'+m; }
+  function labShort(t){ const [h,m]=t.split(':'); const H=Number(h); return (H>=24?'翌'+(H-24):String(H))+(m==='00'?'':':'+m); }
+  function rangeLab(v){ const [a,b]=v.split('-'); return `${lab(a)}〜${lab(b)}`; }
+  function short(v){ if(v==='any')return '◎'; if(v==='off')return '×'; if(!v)return ''; return v.split('-').map(labShort).join('-'); }
+  function kind(v){ return !v?'':(v==='any'||v==='off')?v:'time'; }
+  function opts(list,sel){ return list.map(t=>`<option value="${t}" ${t===sel?'selected':''}>${lab(t)}</option>`).join(''); }
+  function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('show'),2400); }
+  function status(html, cls=''){ const el=$('#status'); if(!html){el.classList.add('hide');return;} el.className='notice '+cls; el.innerHTML=html; }
+  function locked(m){ return !!(S.settings.locked||{})[m]; }
+  function deadlineDate(m){ const [y,mo]=m.split('-').map(Number); return new Date(y, mo-2, Number(S.settings.deadline||20), 23,59,59); }
+  function deadlineLabel(m){ const d=deadlineDate(m); return `${d.getMonth()+1}/${d.getDate()}`; }
+  function pastDeadline(m){ return Date.now() > deadlineDate(m).getTime(); }
+  function dateLabel(m,d){ return `${mNum(m)}/${d}(${WD[wd(m,d)]})`; }
+  const COLORS=['#d12f2f','#2563b8','#2e8b57','#8a4fb0','#b08a1f','#555'];
+  const EMOJI=['🔴','🔵','🟢','🟣','🟡','⚪'];
+  const FIXED={'嬉野':0,'京橋':1,'布施':2};
+  function storeIdx(s){ for(const k in FIXED) if(s.includes(k)) return FIXED[k]; const i=(S.settings.stores||[]).indexOf(s); return i<0?5:i; }
+  function storeColor(s){ return COLORS[storeIdx(s)%COLORS.length]; }
+  function storeEmoji(s){ return EMOJI[storeIdx(s)%EMOJI.length]; }
+  function storeSpan(s){ return `<span style="color:${storeColor(s)};font-weight:700">${esc(s)}</span>`; }
+  function storeChip(v,l,on,extra=''){ const isStore=(S.settings.stores||[]).includes(v);
+    return `<button class="chip ${on?'on':''}" data-s="${esc(v)}" ${extra} ${isStore?`style="--sc:${storeColor(v)}"`:''}>${esc(l)}</button>`; }
+  function shortStore(s){ return s.length<=3 ? s : s.slice(-2); }
+  // スタッフ1人分の月カレンダー。mode: 'final'（公開済み）/'draft'（作成中）
+  function personCal(m, segFn, wishFn, offFn, mode){
+    const n=daysIn(m); let h='<div class="pc">'+WD.map((w,i)=>`<div class="wh ${i===6?'sat':i===0?'sun':''}">${w}</div>`).join('')+'<div></div>'.repeat(wd(m,1));
+    let days=0, mins=0;
+    for(let d=1; d<=n; d++){
+      const segs=segFn(d)||[], wv=wishFn(d)||'', k=kind(wv), w=wd(m,d);
+      const ghost = (k==='any'||k==='time') ? `<span class="ghost">${k==='any'?'◎終日':esc(short(wv))}</span>` : '';
+      let inner='';
+      if(segs.length){ days++; for(const g of segs){ mins+=toMin(g.e)-toMin(g.s);
+        inner+=`<span class="st" style="color:${storeColor(g.store)}">${esc(shortStore(g.store))}</span><span class="tm">${labShort(g.s)}-${labShort(g.e)}</span>`; } }
+      else if(mode==='final' || offFn(d)) inner=`<span class="rest">休</span>${ghost}`;
+      else inner = ghost || (k==='off'?'<span class="rest" style="color:var(--off)">×</span>':'');
+      h+=`<div class="pcd ${segs.length?'work':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}</b>${inner}</div>`;
+    }
+    h+='</div>';
+    const hrs=Math.round(mins/60*100)/100;
+    return h+`<div class="pcsum">出勤 ${days}日・計 ${hrs}時間</div>
+      <div class="pclegend">${(S.settings.stores||[]).map(s=>`<span style="color:${storeColor(s)}">■${esc(shortStore(s))}＝${esc(s)}</span>`).join('')}<span>休＝休み</span><span style="color:#b9aea6">薄字＝出していた希望</span></div>`;
+  }
+  function lineUrl(t){ return 'https://line.me/R/share?text='+encodeURIComponent(t); }
+
+  // ---------- views ----------
+  $('#nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; setView(b.dataset.v); });
+  function setView(v){
+    S.view=v; $$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+    ['submit','shift','list','settings'].forEach(x=>$('#v-'+x).classList.toggle('hide',x!==v));
+    $('#saveBar').classList.toggle('hide',v!=='submit' || !S.ready);
+    if(S.ready && v==='list') loadAdmin(S.listMonth);
+    if(S.ready && v==='settings') loadAdmin(S.listMonth);
+    if(S.ready && v==='shift') loadPub(S.pubMonth);
+    render();
+  }
+  function render(){
+    if(S.view==='submit') renderSubmit();
+    if(S.view==='shift') renderPub();
+    if(S.view==='list') renderList();
+    if(S.view==='settings') renderSettings();
+  }
+
+  // ---------- 希望を出す ----------
+  function loadDraft(){
+    const md = S.mine?.months?.[S.month];
+    S.draft = md ? JSON.parse(JSON.stringify(md)) : { days:{}, note:'' };
+    S.draft.stores = (S.mine?.stores || md?.stores || []).filter(s=>(S.settings.stores||[]).includes(s)).slice(0,1);
+    S.draft.name = S.mine?.name || '';
+    S.draft.defTime = md?.defTime || S.mine?.defTime || null;
+    S.dirty=false;
+  }
+  function fallbackTime(){ const ts=times(); return `${ts[Math.floor(ts.length*0.5)]||ts[0]}-${ts[ts.length-1]}`; }
+  function defTime(){ const v=S.draft.defTime; const ts=times(); if(v){const[a,b]=v.split('-'); if(ts.includes(a)&&ts.includes(b)) return v;} return fallbackTime(); }
+  function monthEditState(m){
+    const md=S.mine?.months?.[m]; const sub=!!md?.submittedAt; const past=pastDeadline(m);
+    if(locked(m)) return {can:false, why:'この月の受付は終了しました。'};
+    if(sub && past) return {can:false, why:`締切（${deadlineLabel(m)}）を過ぎたため、提出済みの希望は変更できません。変更が必要な場合は店長に連絡してください。`};
+    if(sub) return {can:true, why:`提出済みです。締切の${deadlineLabel(m)}までは何度でも変更できます。`};
+    if(past) return {can:true, late:true, why:`締切（${deadlineLabel(m)}）を過ぎていますが提出できます。※提出後は変更できません。`};
+    return {can:true, why:`締切は${deadlineLabel(m)}です。提出後も締切までは変更できます。`};
+  }
+  function renderSubmit(){
+    if(!S.draft) loadDraft();
+    const m=S.month, md=S.mine?.months?.[m], st=monthEditState(m);
+    $('#mLabel').textContent=mLabel(m);
+    $('#mState').innerHTML = locked(m) ? '<span class="badge lock">受付終了</span>'
+      : md?.submittedAt ? `<span class="badge ok">提出済み ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`
+      : `<span class="badge ${pastDeadline(m)?'warn':''}">未提出・${deadlineLabel(m)}締切</span>`;
+    $('#ruleNote').textContent = st.why; $('#ruleNote').className = 'notice' + (st.can && !st.late ? ' ok' : '');
+    const dis = !st.can || !S.canWrite;
+    if(document.activeElement!==$('#myName')) $('#myName').value = S.draft.name || '';
+    if(document.activeElement!==$('#myNote')) $('#myNote').value = S.draft.note || '';
+    $('#myName').disabled=$('#myNote').disabled=dis;
+    $('#myStores').innerHTML = (S.settings.stores||[]).map(s=>storeChip(s,s,S.draft.stores.includes(s),dis?'disabled':'')).join('');
+    const ts=times(); const n=daysIn(m); let h='';
+    for(let d=1; d<=n; d++){
+      const v=S.draft.days[d]||''; const k=kind(v); const w=wd(m,d);
+      const [a,b] = (k==='time'? v : defTime()).split('-');
+      h+=`<div class="day ${w===6?'sat':w===0?'sun':''}" data-d="${d}">
+        <div class="d">${mNum(m)}/${d}<small>${WD[w]}</small></div>
+        <div class="seg">
+          <button class="${k==='any'?'on any':''}" data-k="any" ${dis?'disabled':''}>◎ 終日</button>
+          <button class="${k==='time'?'on time':''}" data-k="time" ${dis?'disabled':''}>時間指定</button>
+          <button class="${k==='off'?'on off':''}" data-k="off" ${dis?'disabled':''}>× 休み</button>
+        </div>
+        ${k==='time'?`<div class="times"><select data-t="s" ${dis?'disabled':''}>${opts(ts,a)}</select>〜<select data-t="e" ${dis?'disabled':''}>${opts(ts,b)}</select></div>`:''}
+      </div>`;
+    }
+    $('#days').innerHTML=h;
+    const [ds,de]=defTime().split('-');
+    $('#defS').innerHTML=opts(ts,ds); $('#defE').innerHTML=opts(ts,de);
+    $('#defS').disabled=$('#defE').disabled=dis;
+    $('#defHint').textContent = S.draft.defTime
+      ? '変更すると、基本の時間のままの日にまとめて反映されます。個別に変えた日はそのままです。'
+      : 'どれか1日の時間を選ぶと、それが基本の時間になり、他の「時間指定」の日にも反映されます。';
+    $$('.bulk button').forEach(b=>b.disabled=dis);
+    const filled=Object.keys(S.draft.days).length;
+    $('#saveInfo').textContent = !S.canWrite ? '閲覧のみの権限です' : !st.can ? '変更できません' : `${filled}/${n}日 入力済み${S.dirty?'・未保存':''}${st.late?'・提出後は変更不可':''}`;
+    $('#saveBtn').disabled = dis;
+    $('#saveBtn').textContent = S.confirmLate ? 'もう一度押して確定' : md?.submittedAt ? '変更を保存' : '提出する';
+  }
+  $('#myStores').addEventListener('click',e=>{ const b=e.target.closest('.chip'); if(!b)return;
+    S.draft.stores=[b.dataset.s]; S.dirty=true; renderSubmit(); });
+  $('#days').addEventListener('click',e=>{ const b=e.target.closest('.seg button'); if(!b)return;
+    const d=b.closest('.day').dataset.d; const k=b.dataset.k; const cur=S.draft.days[d];
+    if(kind(cur)===k) delete S.draft.days[d];
+    else S.draft.days[d] = k==='time' ? defTime() : k;
+    S.dirty=true; renderSubmit(); });
+  $('#days').addEventListener('change',e=>{ const sel=e.target.closest('select'); if(!sel)return;
+    const row=sel.closest('.day'); const d=row.dataset.d; const s=row.querySelector('[data-t=s]').value, en=row.querySelector('[data-t=e]').value;
+    if(s>=en) toast('終了は開始より後にしてください');
+    const nv=`${s}-${en}`;
+    if(!S.draft.defTime){
+      const old=defTime(); let c=0;
+      for(const k of Object.keys(S.draft.days)) if(k!==d && S.draft.days[k]===old){ S.draft.days[k]=nv; c++; }
+      S.draft.defTime=nv; toast(c?`基本の時間に設定し、他の${c}日にも反映しました`:'基本の時間に設定しました');
+    }
+    S.draft.days[d]=nv; S.dirty=true; renderSubmit(); });
+  function onDefChange(){
+    const nv=`${$('#defS').value}-${$('#defE').value}`;
+    if(nv.split('-')[0]>=nv.split('-')[1]){ toast('終了は開始より後にしてください'); renderSubmit(); return; }
+    const old=defTime(); let c=0;
+    for(const k of Object.keys(S.draft.days)) if(S.draft.days[k]===old){ S.draft.days[k]=nv; c++; }
+    S.draft.defTime=nv; S.dirty=true; if(c) toast(`${c}日の時間を変更しました`); renderSubmit();
+  }
+  $('#defS').addEventListener('change',onDefChange); $('#defE').addEventListener('change',onDefChange);
+  $('.bulk').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const k=b.dataset.bulk; const n=daysIn(S.month);
+    if(k==='clear') S.draft.days={}; else for(let d=1;d<=n;d++) if(!S.draft.days[d]) S.draft.days[d]= k==='time'? defTime() : k;
+    S.dirty=true; renderSubmit(); });
+  $('#myNote').addEventListener('input',e=>{ S.draft.note=e.target.value; S.dirty=true; });
+  $('#myName').addEventListener('input',e=>{ S.draft.name=e.target.value; S.dirty=true; });
+  $('#mPrev').onclick=()=>changeMonth(-1); $('#mNext').onclick=()=>changeMonth(1);
+  function changeMonth(n){
+    if(S.dirty && !changeMonth._warned){ changeMonth._warned=true; toast('未保存の変更があります。もう一度押すと破棄して移動します'); return; }
+    changeMonth._warned=false; S.confirmLate=false; S.month=shift(S.month,n); loadDraft(); renderSubmit(); }
+
+  $('#saveBtn').onclick=async()=>{
+    const st=monthEditState(S.month); if(!st.can) return;
+    const name=(S.draft.name||'').trim();
+    if(!name){ toast('名前を入力してください'); $('#myName').focus(); return; }
+    if(!S.draft.stores.length){ toast('所属店舗を選んでください'); return; }
+    for(const [d,v] of Object.entries(S.draft.days)){ if(kind(v)==='time'){const[a,b]=v.split('-'); if(a>=b){toast(`${d}日の時間を確認してください`);return;}} }
+    if(st.late && !S.confirmLate){ S.confirmLate=true; toast('締切後の提出は、提出後に変更できません'); renderSubmit(); return; }
+    S.confirmLate=false;
+    $('#saveBtn').disabled=true;
+    const prev=S.mine?.months?.[S.month];
+    try{
+      const r=await api('saveRequest',{month:S.month, name, store:S.draft.stores[0], defTime:S.draft.defTime||null, days:{...S.draft.days}, note:S.draft.note||''});
+      S.mine=r.mine; S.dirty=false; loadDraft(); toast(`${mLabel(S.month)}の希望を${prev?'更新':'提出'}しました`);
+    }catch(err){
+      toast(err.code==='past_deadline'?'締切を過ぎたため変更できません':err.code==='locked'?'この月の受付は終了しています':'保存できませんでした。通信状況を確認してもう一度お試しください');
+    }
+    renderSubmit();
+  };
+
+  // ---------- サーバー通信 ----------
+  class ApiError extends Error{ constructor(code){ super(code); this.code=code; } }
+  async function api(action, payload={}){
+    const idToken = DEV || liff.getIDToken();
+    let r;
+    try{ r = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,idToken,...payload})}); }
+    catch{ throw new ApiError('network'); }
+    const j = await r.json().catch(()=>({error:'server_error'}));
+    if(r.status===401 && !DEV){ try{ liff.logout(); }catch{} liff.login({redirectUri:location.href}); throw new ApiError('relogin'); }
+    if(!r.ok) throw new ApiError(j.error||'server_error');
+    return j;
+  }
+  function editingDay(){ return document.activeElement?.tagName==='SELECT' && $('#dayDetail').contains(document.activeElement); }
+  async function loadAdmin(m, quiet){
+    if(!S.admin) return;
+    try{
+      const r=await api('adminData',{month:m});
+      if(S.pending?.[m]) return;                 // 書き込み中はローカルを優先
+      S.all=r.all; S.sched[m]=r.schedule; S.pub[m]=r.published; S.settings={...DEFAULTS,...r.settings};
+      if(S.view==='list' && S.listMonth===m && !editingDay()) renderList();
+      if(S.view==='settings') renderSettings();
+    }catch(e){ if(!quiet) toast('データを読み込めませんでした'); }
+  }
+  async function loadPub(m){
+    try{ const r=await api('published',{month:m}); S.pub[m]=r.published; S.settings={...DEFAULTS,...r.settings}; if(S.view==='shift'&&S.pubMonth===m) renderPub(); }
+    catch{ toast('シフト表を読み込めませんでした'); }
+  }
+  // 店長画面を開いている間は30秒ごとに最新化
+  setInterval(()=>{ if(document.visibilityState==='visible' && S.ready && S.view==='list' && !editingDay() && !S.pending?.[S.listMonth]) loadAdmin(S.listMonth,true); }, 30000);
+
+  // ---------- シフト作成（店長） ----------
+  let writeChain=Promise.resolve();
+  function setAssign(m,d,uid,val){
+    const sc = S.sched[m] = S.sched[m] || {days:{}};
+    sc.days=sc.days||{}; sc.days[d]=sc.days[d]||{}; sc.days[d][uid]=val; sc.updatedAt=new Date().toISOString();
+    S.pending=S.pending||{}; S.pending[m]=(S.pending[m]||0)+1;
+    writeChain = writeChain.then(async()=>{
+      try{ await api('assign',{month:m, day:d, uid, val}); }
+      catch(e){ toast('保存できませんでした。通信状況を確認してください'); }
+      finally{ S.pending[m]--; }
+    });
+  }
+  function people(){ return S.all.map(r=>({id:r.id,...r.data})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja')); }
+  function nick(p){ return (S.settings.nicknames||{})[p.id] || p.name || '?'; }
+  function homeStores(p,m){ const cur=S.settings.stores||[]; return (p.stores || p.months?.[m]?.stores || []).filter(s=>cur.includes(s)).slice(0,1); }
+  function assignOf(m,d,uid){ return S.sched[m]?.days?.[d]?.[uid] ?? null; }
+  function segsOf(m,d,uid){ const a=assignOf(m,d,uid); return Array.isArray(a)?a:[]; }
+  function relevant(p,m,d){
+    if(S.storeFilter==='all') return true;
+    return homeStores(p,m).includes(S.storeFilter) || segsOf(m,d,p.id).some(g=>g.store===S.storeFilter);
+  }
+  function wishOf(p,m,d){ return p.months?.[m]?.days?.[d] || ''; }
+
+  $('#lPrev').onclick=()=>{S.listMonth=shift(S.listMonth,-1);S.selDay=1;renderList();loadAdmin(S.listMonth);};
+  $('#lNext').onclick=()=>{S.listMonth=shift(S.listMonth,1);S.selDay=1;renderList();loadAdmin(S.listMonth);};
+  $('#storeFilter').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.storeFilter=b.dataset.s;renderList();});
+  $('#cal').addEventListener('click',e=>{const b=e.target.closest('button[data-d]');if(!b)return;S.selDay=Number(b.dataset.d);renderList();
+    $('#dayDetail').scrollIntoView({behavior:'smooth',block:'start'});});
+
+  function defaultSeg(p,m,d){
+    const w=wishOf(p,m,d); const store = S.storeFilter!=='all' ? S.storeFilter : (homeStores(p,m)[0] || S.settings.stores[0]);
+    let s=S.settings.open||'17:00', e=S.settings.close||'24:00';
+    if(kind(w)==='time') [s,e]=w.split('-');
+    else { const dt=p.months?.[m]?.defTime||p.defTime; if(dt) [s,e]=dt.split('-'); }
+    return {store, s, e};
+  }
+  $('#dayDetail').addEventListener('click',e=>{
+    const step=e.target.closest('[data-step]');
+    if(step){ const n=daysIn(S.listMonth); S.selDay=Math.min(n,Math.max(1,S.selDay+Number(step.dataset.step))); renderList(); return; }
+    const row=e.target.closest('.person'); if(!row) return;
+    const uid=row.dataset.uid, m=S.listMonth, d=S.selDay, p=people().find(x=>x.id===uid);
+    const act=e.target.closest('[data-act]')?.dataset.act; if(!act) return;
+    const cur=assignOf(m,d,uid);
+    if(act==='work'){ if(Array.isArray(cur)) setAssign(m,d,uid,null); else setAssign(m,d,uid,[defaultSeg(p,m,d)]); }
+    if(act==='rest'){ setAssign(m,d,uid, cur==='off'?null:'off'); }
+    if(act==='add'){ const segs=segsOf(m,d,uid); const last=segs[segs.length-1];
+      const other=(S.settings.stores||[]).find(s=>s!==last?.store)||last?.store;
+      setAssign(m,d,uid,[...segs,{store:other, s:last?last.e:'17:00', e:fromMin(Math.min(toMin(last?last.e:'17:00')+240, toMin('30:00')))}]); }
+    if(act==='del'){ const i=Number(e.target.closest('[data-i]').dataset.i); const segs=segsOf(m,d,uid).filter((_,j)=>j!==i); setAssign(m,d,uid, segs.length?segs:null); }
+    renderList();
+  });
+  $('#dayDetail').addEventListener('change',e=>{
+    const sg=e.target.closest('.sg'); if(!sg) return;
+    const row=sg.closest('.person'); const uid=row.dataset.uid, m=S.listMonth, d=S.selDay;
+    const segs=[...row.querySelectorAll('.sg')].map(x=>({store:x.querySelector('[data-f=store]').value, s:x.querySelector('[data-f=s]').value, e:x.querySelector('[data-f=e]').value}));
+    if(segs.some(g=>g.s>=g.e)) toast('終了は開始より後にしてください');
+    setAssign(m,d,uid,segs); renderList();
+  });
+
+  function renderList(){
+    const m=S.listMonth, n=daysIn(m);
+    const stores=S.settings.stores||[];
+    if(S.storeFilter!=='all' && !stores.includes(S.storeFilter)) S.storeFilter=stores[0]||'all';
+    if(!S.selDay||S.selDay>n) S.selDay=1;
+    $('#lLabel').textContent=mLabel(m);
+    $('#lState').innerHTML= locked(m)?'<span class="badge lock">受付停止中</span>':`<span class="badge">希望締切 ${deadlineLabel(m)}</span>`;
+    $('#lockBtn').textContent= locked(m)?`${mLabel(m)}の受付を再開する`:`${mLabel(m)}の受付を完全に止める`;
+    $('#storeFilter').innerHTML=[...stores.map(s=>[s,s]),['all','全店舗']].map(([v,l])=>storeChip(v,l,S.storeFilter===v)).join('');
+    const ppl=people();
+    const inStoreM = p => S.storeFilter==='all' || homeStores(p,m).includes(S.storeFilter);
+    // calendar
+    let c=WD.map((w,i)=>`<div class="wh ${i===6?'sat':i===0?'sun':''}">${w}</div>`).join('');
+    for(let i=0;i<wd(m,1);i++) c+='<div></div>';
+    for(let d=1;d<=n;d++){
+      const ents=[]; for(const p of ppl) for(const g of segsOf(m,d,p.id)) if(S.storeFilter==='all'||g.store===S.storeFilter) ents.push({name:nick(p), ...g});
+      ents.sort((a,b)=>a.s.localeCompare(b.s)); const work=new Set(ents.map(x=>x.name)).size;
+      const avail=ppl.filter(p=>inStoreM(p)&&['any','time'].includes(kind(wishOf(p,m,d)))).length;
+      const w=wd(m,d); const lv=work===0?(avail?'l1':''):work<=1?'l2':'l3';
+      c+=`<button data-d="${d}" class="${lv} ${w===6?'sat':w===0?'sun':''} ${d===S.selDay?'sel':''}"><span class="hd"><span class="n">${d}</span><span class="a">可${avail}</span></span>${ents.map(x=>`<span class="pp">${S.storeFilter==='all'?`<i class="dot" style="background:${storeColor(x.store)}"></i>`:''}${esc(x.name)}</span><span class="tt">${labShort(x.s)}-${labShort(x.e)}</span>`).join('')}</button>`;
+    }
+    $('#cal').innerHTML=c;
+    $('#storeKey').innerHTML = S.storeFilter==='all' ? stores.map(s=>`<span><i class="dot" style="background:${storeColor(s)}"></i>${esc(s)}</span>`).join('') : '';
+    renderDay();
+    renderPubState();
+    // 提出状況
+    const mine=ppl.filter(inStoreM); const sub=mine.filter(p=>p.months?.[m]?.submittedAt);
+    $('#subCount').textContent = mine.length?`${sub.length}/${mine.length}人`:'';
+    $('#staffList').innerHTML = mine.length ? mine.map(p=>{ const md=p.months?.[m];
+      const mini = personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft');
+      const late = md?.firstSubmittedAt && new Date(md.firstSubmittedAt) > deadlineDate(m);
+      return `<details class="sd"><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}</div>
+      ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}</details>`; }).join('')
+      : '<div class="empty">まだ誰も登録していません。「LINEで希望提出をお願いする」からスタッフに送ってください。</div>';
+    // LINE（希望依頼）
+    $('#lineAsk').href=lineUrl(`【シフト希望のお願い】\n${S.storeFilter==='all'?'':S.storeFilter+'の'}${mNum(m)}月のシフト希望を ${deadlineLabel(m)} までに提出してください🙏\n${PAGE_URL}`);
+    const notyet=mine.filter(p=>!p.months?.[m]?.submittedAt).map(p=>nick(p)).filter(Boolean);
+    $('#lineRemind').href=lineUrl(`【シフト希望 提出のお願い】\n${mNum(m)}月のシフト希望がまだの方は提出をお願いします（締切 ${deadlineLabel(m)}）。\n${notyet.length?'未提出：'+notyet.join('、')+'\n':''}${PAGE_URL}`);
+    $('#lineRemind').classList.toggle('hide', !notyet.length);
+  }
+
+  function renderDay(){
+    const m=S.listMonth, d=S.selDay, n=daysIn(m), w=wd(m,d);
+    const stores=S.settings.stores||[];
+    const ppl=people().filter(p=>relevant(p,m,d));
+    const rank=p=>{ const a=assignOf(m,d,p.id); if(Array.isArray(a))return 0; const k=kind(wishOf(p,m,d)); return k==='any'||k==='time'?1:a==='off'?3:k==='off'?4:2; };
+    ppl.sort((a,b)=>rank(a)-rank(b) || (a.name||'').localeCompare(b.name||'','ja'));
+    const workN=ppl.filter(p=>segsOf(m,d,p.id).some(g=>S.storeFilter==='all'||g.store===S.storeFilter)).length;
+    const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['未入力',p=>rank(p)===2],['シフトから外した人',p=>rank(p)===3],['休み希望',p=>rank(p)===4]];
+    let body='';
+    for(const [title,fn] of groups){
+      const g=ppl.filter(fn); if(!g.length) continue;
+      body+=`<div class="sechead">${title}（${g.length}）</div>`;
+      body+=g.map(p=>{
+        const a=assignOf(m,d,p.id), wv=wishOf(p,m,d), k=kind(wv);
+        const sub=p.months?.[m]?.submittedAt;
+        const tag = !sub?'<span class="tag none">未提出</span>' : k==='any'?'<span class="tag any">希望 ◎終日</span>' : k==='time'?`<span class="tag time">希望 ${esc(rangeLab(wv))}</span>` : k==='off'?'<span class="tag off">希望 ×休み</span>':'<span class="tag none">希望 未入力</span>';
+        const segs=Array.isArray(a)?a:[];
+        return `<div class="person" data-uid="${esc(p.id)}">
+          <div class="top"><span class="nm">${esc(nick(p))} <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
+          <div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>
+          ${segs.length?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
+              <select data-f="store">${stores.map(s=>`<option ${s===g.store?'selected':''} style="color:${storeColor(s)}">${esc(s)}</option>`).join('')}</select>
+              <select data-f="s">${opts(ALL15,g.s)}</select><span>〜</span><select data-f="e">${opts(ALL15,g.e)}</select>
+              <button class="x" data-act="del" aria-label="削除">✕</button></div>`).join('')}
+            <button class="addseg" data-act="add">＋ 別の店舗・時間帯を追加</button></div>`:''}
+        </div>`; }).join('');
+    }
+    $('#dayDetail').innerHTML=`<h3><span style="color:${w===6?'var(--sat)':w===0?'var(--sun)':'inherit'}">${mNum(m)}月${d}日（${WD[w]}）</span><span class="badge ok">出勤 ${workN}人</span></h3>
+      <div class="muted">${S.storeFilter==='all'?'全店舗':esc(S.storeFilter)}の所属スタッフと、この日${S.storeFilter==='all'?'':'この店舗に'}入る人を表示しています。</div>
+      ${body||'<div class="empty">スタッフがまだ登録していません</div>'}
+      <div class="navday"><button class="btn" data-step="-1" ${d<=1?'disabled':''}>‹ 前の日</button><button class="btn" data-step="1" ${d>=n?'disabled':''}>次の日 ›</button></div>`;
+  }
+
+  // ---------- 公開・共有 ----------
+  function buildPublished(m){
+    const ppl=people(), n=daysIn(m), days={};
+    for(let d=1;d<=n;d++){
+      const list=[];
+      for(const p of ppl) for(const g of segsOf(m,d,p.id)) list.push({uid:p.id, name:nick(p), store:g.store, s:g.s, e:g.e});
+      list.sort((a,b)=>a.store.localeCompare(b.store,'ja')||a.s.localeCompare(b.s)||a.name.localeCompare(b.name,'ja'));
+      if(list.length) days[d]=list;
+    }
+    return days;
+  }
+  function shiftText(m,store,from,to){
+    const days=buildPublished(m); const lines=[`${store==='all'?'':storeEmoji(store)}【${store==='all'?'全店舗':store} ${mNum(m)}月シフト（${from}日〜${to}日）】`];
+    for(let d=from; d<=to; d++){
+      const list=(days[d]||[]).filter(x=>store==='all'||x.store===store);
+      lines.push(`■${dateLabel(m,d)}`);
+      if(!list.length) lines.push('　なし');
+      for(const x of list) lines.push(`　${x.name} ${lab(x.s)}〜${lab(x.e)}${store==='all'?' '+storeEmoji(x.store)+x.store:''}`);
+    }
+    lines.push('', 'アプリでも確認できます', PAGE_URL);
+    return lines.join('\n');
+  }
+  function renderPubState(){
+    const m=S.listMonth, n=daysIn(m), pub=S.pub[m], sc=S.sched[m];
+    const changed = pub && sc?.updatedAt && sc.updatedAt > pub.publishedAt;
+    $('#pubState').innerHTML = !pub ? 'まだ公開していません。公開すると、スタッフが「シフト表」タブで見られるようになります。'
+      : `公開済み（${new Date(pub.publishedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}）${changed?' <span class="badge warn">公開後に変更あり</span>':''}`;
+    $('#pubBtn').textContent = pub ? (changed?'変更を反映して再公開する':'もう一度公開する') : 'この月のシフトを公開する';
+    const st=S.storeFilter; $('#lineStoreName').innerHTML = st==='all'?'全店舗':storeSpan(st);
+    $('#lineShift1').href=lineUrl(shiftText(m,st,1,15));
+    $('#lineShift2').href=lineUrl(shiftText(m,st,16,n));
+  }
+  $('#pubBtn').onclick=async()=>{
+    const m=S.listMonth; await writeChain;
+    try{ const r=await api('publish',{month:m}); S.pub[m]=r.published; renderPubState(); toast(`${mLabel(m)}のシフトを公開しました`); }
+    catch(err){ toast(err.code==='forbidden'?'公開する権限がありません':'公開できませんでした'); }
+  };
+  $('#copyShift').onclick=async()=>{
+    const m=S.listMonth; try{ await navigator.clipboard.writeText(shiftText(m,S.storeFilter,1,daysIn(m))); toast('コピーしました。LINEに貼り付けて送れます'); }catch{ toast('コピーできませんでした'); }
+  };
+  $('#lockBtn').onclick=async()=>{
+    const lockedMap={...(S.settings.locked||{})}; const m=S.listMonth;
+    if(lockedMap[m]) delete lockedMap[m]; else lockedMap[m]=true;
+    await saveSettingsDoc({...S.settings, locked:lockedMap}, lockedMap[m]?`${mLabel(m)}の受付を止めました`:`${mLabel(m)}の受付を再開しました`);
+  };
+
+  // ---------- シフト表（スタッフ向け） ----------
+  $('#pPrev').onclick=()=>{S.pubMonth=shift(S.pubMonth,-1);renderPub();loadPub(S.pubMonth);};
+  $('#pNext').onclick=()=>{S.pubMonth=shift(S.pubMonth,1);renderPub();loadPub(S.pubMonth);};
+  $('#pBody').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.pubStore=b.dataset.s;renderPub();});
+  function renderPub(){
+    const m=S.pubMonth, pub=S.pub[m], n=daysIn(m);
+    $('#pLabel').textContent=mLabel(m);
+    $('#pState').innerHTML = pub?`<span class="badge ok">公開 ${new Date(pub.publishedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`:'';
+    if(!pub){ $('#pBody').innerHTML='<div class="card empty">この月のシフトはまだ公開されていません</div>'; return; }
+    const stores=S.settings.stores||[];
+    const chips=[['mine','自分のシフト'],...stores.map(s=>[s,s])].map(([v,l])=>storeChip(v,l,S.pubStore===v)).join('');
+    if(S.pubStore==='mine'){
+      const md=S.mine?.months?.[m];
+      const cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], ()=>true, 'final');
+      $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card" style="padding:10px">${cal}</div>`;
+      return;
+    }
+    let h='';
+    for(let d=1; d<=n; d++){
+      const w=wd(m,d); let list=pub.days?.[d]||[];
+      list = S.pubStore==='mine' ? list.filter(x=>x.uid===S.uid) : list.filter(x=>x.store===S.pubStore);
+      if(S.pubStore==='mine' && !list.length) continue;
+      h+=`<div class="pday"><div class="dh ${w===6?'sat':w===0?'sun':''}">${dateLabel(m,d)}</div>${
+        list.length?list.map(x=>`<div class="pline ${x.uid===S.uid&&S.pubStore!=='mine'?'mine':''}"><span>${S.pubStore==='mine'?storeSpan(x.store):esc((S.settings.nicknames||{})[x.uid]||x.name)}</span><span>${lab(x.s)}〜${lab(x.e)}</span></div>`).join(''):'<div class="pline muted">なし</div>'}</div>`;
+    }
+    $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card">${h||'<div class="empty">この月の出勤はありません</div>'}</div>`;
+  }
+
+  // ---------- 設定 ----------
+  let editStores=null;
+  function renderSettings(){
+    if(!editStores) editStores=[...(S.settings.stores||[])];
+    const nk=S.settings.nicknames||{};
+    const all=people();
+    if(!$('#nickList').contains(document.activeElement))
+      $('#nickList').innerHTML = all.length ? all.map(p=>`<div class="mgr"><span><b>${esc(p.name||'(名前なし)')}</b> <span class="muted">登録名</span></span>
+        <input type="text" data-nick="${esc(p.id)}" value="${esc(nk[p.id]||'')}" placeholder="例：${esc((p.name||'').slice(0,2))}" maxlength="6" style="width:110px;padding:6px 10px"></div>`).join('')
+        : '<div class="empty">まだ誰も登録していません</div>';
+    const mg=S.settings.managers||[];
+    const ppl=people().filter(p=>p.id!==S.uid);
+    $('#mgrList').innerHTML = ppl.length ? ppl.map(p=>`<div class="mgr"><span><b>${esc(nick(p))}</b>${nk[p.id]?` <span class="muted">(${esc(p.name)})</span>`:''} <span style="font-size:13px">${homeStores(p,'').map(storeSpan).join('・')}</span></span>
+      <button class="toggle ${mg.includes(p.id)?'on':''}" data-mgr="${esc(p.id)}">${mg.includes(p.id)?'許可中':'許可しない'}</button></div>`).join('')
+      : '<div class="empty">まだ誰も登録していません</div>';
+    $('#storeInputs').innerHTML=editStores.map((s,i)=>`<div class="row" style="margin-bottom:6px"><input type="text" data-i="${i}" value="${esc(s)}" maxlength="20" style="flex:1;border-left:6px solid ${storeColor(s)};color:${storeColor(s)};font-weight:700"><button class="btn small" data-del="${i}">削除</button></div>`).join('');
+    $('#sOpen').innerHTML=opts(ALL30,S.settings.open);
+    $('#sClose').innerHTML=opts(ALL30,S.settings.close);
+    $('#sDeadline').innerHTML=Array.from({length:28},(_,i)=>i+1).map(d=>`<option value="${d}" ${d==S.settings.deadline?'selected':''}>${d}日</option>`).join('');
+  }
+  $('#storeInputs').addEventListener('input',e=>{const i=e.target.dataset.i; if(i!=null) editStores[i]=e.target.value;});
+  $('#storeInputs').addEventListener('click',e=>{const i=e.target.dataset.del; if(i==null)return; editStores.splice(Number(i),1); renderSettings();});
+  $('#nickList').addEventListener('change',async e=>{ const id=e.target.dataset.nick; if(!id) return;
+    const v=e.target.value.trim(); const nk={...(S.settings.nicknames||{})};
+    if(v) nk[id]=v; else delete nk[id];
+    try{ const r=await api('setNickname',{uid:id, nickname:v}); S.settings={...DEFAULTS,...r.settings}; toast(v?`表示名を「${v}」にしました`:'表示名を登録名に戻しました'); renderSettings(); }catch{ toast('保存できませんでした'); } });
+  $('#mgrList').addEventListener('click',async e=>{ const b=e.target.closest('[data-mgr]'); if(!b||!S.isOwner) return;
+    const id=b.dataset.mgr; const mg=[...(S.settings.managers||[])]; const i=mg.indexOf(id); i>=0?mg.splice(i,1):mg.push(id);
+    try{ const r=await api('setManager',{uid:id, on:i<0}); S.settings={...DEFAULTS,...r.settings}; toast(i>=0?'許可を外しました':'シフト作成を許可しました'); renderSettings(); }catch{ toast('変更できませんでした'); } });
+  $('#addStore').onclick=()=>{editStores.push(''); renderSettings();};
+  $('#saveSettings').onclick=async()=>{
+    const stores=editStores.map(s=>s.trim()).filter(Boolean);
+    if(!stores.length){toast('店舗を1つ以上入力してください');return;}
+    if($('#sOpen').value>=$('#sClose').value){toast('時間帯の開始と終了を確認してください');return;}
+    await saveSettingsDoc({...S.settings, stores, open:$('#sOpen').value, close:$('#sClose').value, deadline:Number($('#sDeadline').value)}, '設定を保存しました');
+    editStores=null;
+  };
+  async function saveSettingsDoc(data,msg){
+    try{ const r=await api('saveSettings',{settings:data}); S.settings={...DEFAULTS,...r.settings}; $('#hdrStore').textContent=(S.settings.stores||[]).join('・'); toast(msg); render(); }
+    catch(err){ toast(err.code==='forbidden'?'設定を変更する権限がありません':'保存できませんでした'); }
+  }
+
+  // ---------- 起動 ----------
+  function updateRole(){
+    S.admin = S.role==='owner' || S.role==='manager'; S.isOwner = S.role==='owner';
+    $$('.admin').forEach(b=>b.classList.toggle('hide',!S.admin));
+    $$('.owneronly').forEach(b=>b.classList.toggle('hide',!S.isOwner));
+  }
+  async function boot(){
+    if(!DEV){
+      if(LIFF_ID.startsWith('__')){ status('LIFF IDが未設定です。'); return; }
+      await liff.init({liffId:LIFF_ID});
+      if(!liff.isLoggedIn()){ status('LINEでログインしています…'); liff.login({redirectUri:location.href}); return; }
+    }
+    status('読み込み中…');
+    const claim=new URLSearchParams(location.search).get('claim');
+    const r=await api('boot', claim?{claim}:{});
+    S.uid=r.uid; S.role=r.role; S.lineName=r.lineName; S.settings={...DEFAULTS,...r.settings}; S.mine=r.mine;
+    S.ready=true; updateRole();
+    $('#hdrStore').textContent=(S.settings.stores||[]).join('・');
+    loadDraft(); if(!S.draft.name) S.draft.name=r.lineName||'';
+    if(claim && S.isOwner) { status('オーナーとして登録しました。このあとは普通のリンクから開いてください。','ok'); history.replaceState(null,'',location.pathname); }
+    else status('');
+    setView(S.view);
+  }
+  setView('submit'); $('#saveBar').classList.add('hide');
+  boot().catch(e=>{ if(e?.code!=='relogin') status('読み込みに失敗しました。通信状況を確認して、開き直してください。'); });
+})();
+</script>
+</body>
+</html>
