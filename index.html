@@ -135,6 +135,8 @@ textarea{min-height:70px;resize:vertical}
 .person.busy{opacity:.85}
 .busynote{font-size:12px;color:#6b5a8a;margin-top:4px;line-height:1.5}
 .cal button .supn{color:#7b4fc0;font-weight:700}
+.searchbox{margin-top:14px;padding-top:10px;border-top:2px dashed var(--line)}
+.searchbox input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin:4px 0 6px;font-size:15px}
 .sechead{font-size:12px;color:var(--sub);margin:14px 0 2px;font-weight:700}
 /* staff list */
 .stafflist{display:flex;flex-direction:column}
@@ -537,7 +539,7 @@ details.sd summary::-webkit-details-marker{display:none}
     if(!r.ok) throw new ApiError(j.error||'server_error');
     return j;
   }
-  function editingDay(){ return document.activeElement?.tagName==='SELECT' && $('#dayDetail').contains(document.activeElement); }
+  function editingDay(){ const t=document.activeElement?.tagName; return (t==='SELECT'||t==='INPUT') && $('#dayDetail').contains(document.activeElement); }
   async function loadAdmin(m, quiet){
     if(!S.admin) return;
     try{
@@ -601,6 +603,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const row=e.target.closest('.person'); if(!row) return;
     const uid=row.dataset.uid, m=S.listMonth, d=S.selDay, p=people().find(x=>x.id===uid);
     const act=e.target.closest('[data-act]')?.dataset.act; if(!act) return;
+    if(row.closest('#dayResults') && act==='work') S.daySearch='';
     const cur=assignOf(m,d,uid);
     if(act==='work'){ if(Array.isArray(cur)) setAssign(m,d,uid,null); else setAssign(m,d,uid,[defaultSeg(p,m,d)]); }
     if(act==='rest'){ setAssign(m,d,uid, cur==='off'?null:'off'); }
@@ -660,45 +663,69 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#lineRemind').classList.toggle('hide', !notyet.length);
   }
 
+  function personRow(p,m,d,searched){
+    const stores=S.settings.stores||[];
+    const a=assignOf(m,d,p.id), wv=wishOf(p,m,d), k=kind(wv);
+    const sub=p.months?.[m]?.submittedAt;
+    const tag = !sub?'<span class="tag none">未提出</span>' : k==='any'?'<span class="tag any">希望 ◎終日</span>' : k==='time'?`<span class="tag time">希望 ${esc(rangeLab(wv))}</span>` : k==='off'?'<span class="tag off">希望 ×休み</span>':'<span class="tag none">希望 未入力</span>';
+    const segs=Array.isArray(a)?a:[];
+    const home=S.storeFilter==='all' || homeStores(p,m).includes(S.storeFilter);
+    const sp=isSupport(p,m), other=!home && !sp;          // other＝所属でも応援可能でもない他店スタッフ（検索で追加）
+    const busy=!home && !segs.some(g=>g.store===S.storeFilter) ? busyElsewhere(p,m,d) : [];
+    const lock=busy.length>0;
+    const note = lock ? `<div class="busynote">${busy.map(g=>`${storeSpan(g.store)}で出勤 ${lab(g.s)}〜${lab(g.e)}`).join('・')}<br>所属店舗の出勤を調整すれば入れます（店長同士で相談）</div>`
+               : (!home && a==='off') ? '<div class="busynote">所属店舗で「休み（外す）」に決定済み</div>' : '';
+    return `<div class="person ${!home?'support':''} ${lock?'busy':''}" data-uid="${esc(p.id)}">
+      <div class="top"><span class="nm">${sp?'<span class="suptag">応援</span>':other?'<span class="suptag" style="background:#8a7f78">他店</span>':''}<span class="nmtxt">${esc(nick(p))}</span> <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
+      ${note}
+      ${lock?'':`<div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>`}
+      ${segs.length&&!lock?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
+          <select data-f="store">${stores.map(s=>`<option ${s===g.store?'selected':''} style="color:${storeColor(s)}">${esc(s)}</option>`).join('')}</select>
+          <select data-f="s">${opts(ALL15,g.s)}</select><span>〜</span><select data-f="e">${opts(ALL15,g.e)}</select>
+          <button class="x" data-act="del" aria-label="削除">✕</button></div>`).join('')}
+        <button class="addseg" data-act="add">＋ 別の店舗・時間帯を追加</button></div>`:''}
+    </div>`;
+  }
+  // この日に表示する人：この店舗で出勤が決まっている人、またはこの日に出勤可能の希望を出している人
+  function shownOnDay(p,m,d){
+    const here=segsOf(m,d,p.id).some(g=>S.storeFilter==='all'||g.store===S.storeFilter);
+    if(here) return true;
+    if(!relevant(p,m,d)) return false;
+    return ['any','time'].includes(kind(wishOf(p,m,d)));
+  }
+  function searchResults(m,d){
+    const q=(S.daySearch||'').trim().toLowerCase(); if(!q) return '';
+    const hits=people().filter(p=>!shownOnDay(p,m,d) && [nick(p),p.name||''].some(x=>x.toLowerCase().includes(q)));
+    return hits.length ? hits.map(p=>personRow(p,m,d,true)).join('') : '<div class="muted" style="padding:8px 0">該当するスタッフがいません</div>';
+  }
   function renderDay(){
     const m=S.listMonth, d=S.selDay, n=daysIn(m), w=wd(m,d);
-    const stores=S.settings.stores||[];
-    const ppl=people().filter(p=>relevant(p,m,d));
+    if(S.daySearchKey!==`${m}-${d}-${S.storeFilter}`){ S.daySearch=''; S.daySearchKey=`${m}-${d}-${S.storeFilter}`; }
+    const all=people().filter(p=>relevant(p,m,d));
+    const ppl=all.filter(p=>shownOnDay(p,m,d));
+    const hidden=all.length-ppl.length;
     const rank=p=>{ const a=assignOf(m,d,p.id);
-      if(isSupport(p,m)) return segsOf(m,d,p.id).some(g=>g.store===S.storeFilter)?0:(busyElsewhere(p,m,d).length?6:5);
-      if(Array.isArray(a))return 0; const k=kind(wishOf(p,m,d)); return k==='any'||k==='time'?1:a==='off'?3:k==='off'?4:2; };
+      if(isSupport(p,m)) return segsOf(m,d,p.id).some(g=>g.store===S.storeFilter)?0:5;
+      if(Array.isArray(a)&&a.some(g=>S.storeFilter==='all'||g.store===S.storeFilter))return 0; return a==='off'?3:1; };
     ppl.sort((a,b)=>rank(a)-rank(b) || (a.name||'').localeCompare(b.name||'','ja'));
     const workN=ppl.filter(p=>segsOf(m,d,p.id).some(g=>S.storeFilter==='all'||g.store===S.storeFilter)).length;
-    const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['未入力',p=>rank(p)===2],['シフトから外した人',p=>rank(p)===3],['休み希望',p=>rank(p)===4],['応援可能スタッフ（他店所属）',p=>rank(p)===5||rank(p)===6]];
+    const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['シフトから外した人',p=>rank(p)===3],['応援可能スタッフ（他店所属）',p=>rank(p)===5]];
     let body='';
     for(const [title,fn] of groups){
       const g=ppl.filter(fn); if(!g.length) continue;
-      body+=`<div class="sechead">${title}（${g.length}）</div>`;
-      body+=g.map(p=>{
-        const a=assignOf(m,d,p.id), wv=wishOf(p,m,d), k=kind(wv);
-        const sub=p.months?.[m]?.submittedAt;
-        const tag = !sub?'<span class="tag none">未提出</span>' : k==='any'?'<span class="tag any">希望 ◎終日</span>' : k==='time'?`<span class="tag time">希望 ${esc(rangeLab(wv))}</span>` : k==='off'?'<span class="tag off">希望 ×休み</span>':'<span class="tag none">希望 未入力</span>';
-        const segs=Array.isArray(a)?a:[];
-        const sp=isSupport(p,m), busy=sp && !segs.some(g=>g.store===S.storeFilter) ? busyElsewhere(p,m,d) : [];
-        const lock=busy.length>0;
-        const note = lock ? `<div class="busynote">${busy.map(g=>`${storeSpan(g.store)}で出勤 ${lab(g.s)}〜${lab(g.e)}`).join('・')}<br>所属店舗の出勤を調整すれば応援可能（店長同士で相談）</div>`
-                   : (sp && a==='off') ? '<div class="busynote">所属店舗で「休み（外す）」に決定済み</div>' : '';
-        return `<div class="person ${sp?'support':''} ${lock?'busy':''}" data-uid="${esc(p.id)}">
-          <div class="top"><span class="nm">${sp?'<span class="suptag">応援</span>':''}<span class="nmtxt">${esc(nick(p))}</span> <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
-          ${note}
-          ${lock?'':`<div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>`}
-          ${segs.length&&!lock?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
-              <select data-f="store">${stores.map(s=>`<option ${s===g.store?'selected':''} style="color:${storeColor(s)}">${esc(s)}</option>`).join('')}</select>
-              <select data-f="s">${opts(ALL15,g.s)}</select><span>〜</span><select data-f="e">${opts(ALL15,g.e)}</select>
-              <button class="x" data-act="del" aria-label="削除">✕</button></div>`).join('')}
-            <button class="addseg" data-act="add">＋ 別の店舗・時間帯を追加</button></div>`:''}
-        </div>`; }).join('');
+      body+=`<div class="sechead">${title}（${g.length}）</div>`+g.map(p=>personRow(p,m,d,false)).join('');
     }
     $('#dayDetail').innerHTML=`<h3><span style="color:${w===6?'var(--sat)':w===0?'var(--sun)':'inherit'}">${mNum(m)}月${d}日（${WD[w]}）</span><span class="badge ok">出勤 ${workN}人</span></h3>
-      <div class="muted">${S.storeFilter==='all'?'全店舗':esc(S.storeFilter)}の所属スタッフ${S.storeFilter==='all'?'':'・応援可能スタッフ（紫）'}と、この日${S.storeFilter==='all'?'':'この店舗に'}入る人を表示しています。</div>
-      ${body||'<div class="empty">スタッフがまだ登録していません</div>'}
+      <div class="muted">この日に出勤できる希望を出している人と、出勤が決まった人を表示しています${S.storeFilter==='all'?'':'（応援可能スタッフは紫）'}。</div>
+      ${body||'<div class="empty" style="padding:14px">この日に出勤できる希望を出している人はいません</div>'}
+      <div class="searchbox">
+        <div class="sechead" style="margin-top:4px">希望を出していない人を追加${hidden?`（${hidden}人を非表示中）`:''}</div>
+        <input type="search" id="daySearch" placeholder="名前で検索（本人と直接交渉した場合など）" value="${esc(S.daySearch||'')}" autocomplete="off">
+        <div id="dayResults">${searchResults(m,d)}</div>
+      </div>
       <div class="navday"><button class="btn" data-step="-1" ${d<=1?'disabled':''}>‹ 前の日</button><button class="btn" data-step="1" ${d>=n?'disabled':''}>次の日 ›</button></div>`;
   }
+  $('#dayDetail').addEventListener('input',e=>{ if(e.target.id!=='daySearch') return; S.daySearch=e.target.value; $('#dayResults').innerHTML=searchResults(S.listMonth,S.selDay); });
 
   // ---------- 公開・共有 ----------
   function buildPublished(m){
