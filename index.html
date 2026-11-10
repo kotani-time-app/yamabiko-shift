@@ -92,6 +92,7 @@ textarea{min-height:70px;resize:vertical}
 .pcd.work{background:#f3faf6;border-color:#cfe7da}
 .pcd .st{font-weight:700;white-space:nowrap;overflow:hidden;display:block}
 .pcd .tm{display:block;word-break:break-all;font-size:9.5px}
+.pcd .tbd{color:#8a5a00;background:#fff3d6;border-radius:4px;padding:0 3px;font-weight:700;display:inline-block;font-size:10px}
 .pcd .rest{color:var(--sub);font-weight:700;display:block}
 .pcd .ghost{color:#b9aea6;display:block;word-break:break-all;font-size:9.5px}
 .pcsum{font-size:13px;font-weight:700;margin-top:4px}
@@ -357,14 +358,15 @@ details.sd summary::-webkit-details-marker{display:none}
       let inner='';
       if(segs.length){ days++; for(const g of segs){ mins+=toMin(g.e)-toMin(g.s);
         inner+=`<span class="st" style="color:${storeColor(g.store)}">${esc(shortStore(g.store))}</span><span class="tm">${labShort(g.s)}-${labShort(g.e)}</span>`; } }
-      else if(mode==='final' || offFn(d)) inner=`<span class="rest">休</span>${ghost}`;
+      else if(offFn(d)) inner=`<span class="rest">休</span>${ghost}`;
+      else if(mode==='final') inner=`<span class="tbd">未定</span>${ghost}`;
       else inner = ghost || (k==='off'?'<span class="rest" style="color:var(--off)">×</span>':'');
       h+=`<div class="pcd ${segs.length?'work':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}</b>${inner}</div>`;
     }
     h+='</div>';
     const hrs=Math.round(mins/60*100)/100;
     return h+`<div class="pcsum">出勤 ${days}日・計 ${hrs}時間</div>
-      <div class="pclegend">${(S.settings.stores||[]).map(s=>`<span style="color:${storeColor(s)}">■${esc(shortStore(s))}＝${esc(s)}</span>`).join('')}<span>休＝休み</span><span style="color:#b9aea6">薄字＝出していた希望</span></div>`;
+      <div class="pclegend">${(S.settings.stores||[]).map(s=>`<span style="color:${storeColor(s)}">■${esc(shortStore(s))}＝${esc(s)}</span>`).join('')}<span>休＝休み</span>${mode==='final'?'<span>未定＝まだ決まっていない</span>':''}<span style="color:#b9aea6">薄字＝出していた希望</span></div>`;
   }
   function lineUrl(t){ return 'https://line.me/R/share?text='+encodeURIComponent(t); }
 
@@ -721,7 +723,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const chips=[['mine','自分のシフト'],...stores.map(s=>[s,s])].map(([v,l])=>storeChip(v,l,S.pubStore===v)).join('');
     if(S.pubStore==='mine'){
       const md=S.mine?.months?.[m];
-      const cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], ()=>true, 'final');
+      const cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], d=>(pub.offs?.[d]||[]).includes(S.uid), 'final');
       $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card" style="padding:10px">${cal}</div>`;
       return;
     }

@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
       case "published": {
         needMonth();
         const { data } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
-        return json({ published: data ? { days: data.days, publishedAt: data.published_at } : null, settings: await publicSettings(settings) });
+        return json({ published: data ? { days: data.days, offs: data.offs, publishedAt: data.published_at } : null, settings: await publicSettings(settings) });
       }
 
       case "adminData": {
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
         return json({
           all,
           schedule: sched ? { days: sched.days, updatedAt: sched.updated_at } : { days: {} },
-          published: pub ? { days: pub.days, publishedAt: pub.published_at } : null,
+          published: pub ? { days: pub.days, offs: pub.offs, publishedAt: pub.published_at } : null,
           settings: await publicSettings(settings),
         });
       }
@@ -191,9 +191,11 @@ Deno.serve(async (req) => {
         ]);
         const byId = new Map((staff ?? []).map((s) => [s.id, s]));
         const days: Record<string, unknown[]> = {};
+        const offs: Record<string, string[]> = {};
         for (const [d, m] of Object.entries((sched?.days ?? {}) as Record<string, Record<string, unknown>>)) {
           const list: any[] = [];
           for (const [id, v] of Object.entries(m)) {
+            if (v === "off") { (offs[d] ??= []).push(id); continue; }
             if (!Array.isArray(v)) continue;
             const st = byId.get(id);
             for (const g of v as any[]) list.push({ uid: id, name: st?.nickname || st?.name || "", store: g.store, s: g.s, e: g.e });
@@ -202,9 +204,9 @@ Deno.serve(async (req) => {
           if (list.length) days[d] = list;
         }
         const now = new Date().toISOString();
-        const { error } = await sb.from("shift_published").upsert({ month, days, published_at: now }, { onConflict: "month" });
+        const { error } = await sb.from("shift_published").upsert({ month, days, offs, published_at: now }, { onConflict: "month" });
         if (error) throw error;
-        return json({ ok: true, published: { days, publishedAt: now } });
+        return json({ ok: true, published: { days, offs, publishedAt: now } });
       }
 
       case "saveSettings": {
