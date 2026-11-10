@@ -255,7 +255,7 @@ details.sd summary::-webkit-details-marker{display:none}
   <section id="v-settings" class="hide">
     <div class="card owneronly hide">
       <h2>シフト作成を許可する人</h2>
-      <div class="muted" style="margin-bottom:6px">許可した人だけが「シフト作成」と「設定」を開けます（オーナーのあなたは常に可）。一覧に出ない人は、先に「希望を出す」で名前を保存してもらってください。</div>
+      <div class="muted" style="margin-bottom:6px">「＋ 許可する」を押すと、その人が「シフト作成」と「設定」を開けるようになります（もう一度押すと取り消し。オーナーのあなたは常に可）。一覧に出ない人は、先に「希望を出す」で名前を保存してもらってください。</div>
       <div id="mgrList"></div>
     </div>
     <div class="card">
@@ -749,7 +749,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const mg=S.settings.managers||[];
     const ppl=people().filter(p=>p.id!==S.uid);
     $('#mgrList').innerHTML = ppl.length ? ppl.map(p=>`<div class="mgr"><span><b>${esc(nick(p))}</b>${nk[p.id]?` <span class="muted">(${esc(p.name)})</span>`:''} <span style="font-size:13px">${homeStores(p,'').map(storeSpan).join('・')}</span></span>
-      <button class="toggle ${mg.includes(p.id)?'on':''}" data-mgr="${esc(p.id)}">${mg.includes(p.id)?'許可中':'許可しない'}</button></div>`).join('')
+      <button class="toggle ${mg.includes(p.id)?'on':''}" data-mgr="${esc(p.id)}">${mg.includes(p.id)?'✓ 許可中':'＋ 許可する'}</button></div>`).join('')
       : '<div class="empty">まだ誰も登録していません</div>';
     $('#storeInputs').innerHTML=editStores.map((s,i)=>`<div class="row" style="margin-bottom:6px"><input type="text" data-i="${i}" value="${esc(s)}" maxlength="20" style="flex:1;border-left:6px solid ${storeColor(s)};color:${storeColor(s)};font-weight:700"><button class="btn small" data-del="${i}">削除</button></div>`).join('');
     $('#sOpen').innerHTML=opts(ALL30,S.settings.open);
