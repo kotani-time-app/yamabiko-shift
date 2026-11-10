@@ -6,7 +6,7 @@ const sb = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
-const CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "";
+const CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "2012523700";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
