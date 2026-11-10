@@ -129,6 +129,12 @@ textarea{min-height:70px;resize:vertical}
 .addseg{border:1px dashed var(--ok);background:none;color:var(--ok);border-radius:8px;padding:6px;cursor:pointer;font-size:13px}
 .navday{display:flex;gap:8px;margin-top:12px}
 .navday button{flex:1}
+.person.support{background:#f6f1fc;border-left:4px solid #7b4fc0;padding-left:8px;border-radius:6px;margin:4px 0}
+.suptag{background:#7b4fc0;color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.person.busy .nmtxt{text-decoration:line-through;text-decoration-thickness:2px;color:#9a8f88}
+.person.busy{opacity:.85}
+.busynote{font-size:12px;color:#6b5a8a;margin-top:4px;line-height:1.5}
+.cal button .supn{color:#7b4fc0;font-weight:700}
 .sechead{font-size:12px;color:var(--sub);margin:14px 0 2px;font-weight:700}
 /* staff list */
 .stafflist{display:flex;flex-direction:column}
@@ -271,6 +277,11 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-bottom:8px">毎月21日0時に、翌月のシフト希望を提出していないスタッフへ、LINE公式アカウントから個別にお知らせを送ります（公式アカウントを友だち追加している人のみ）。</div>
       <div id="remindState" class="muted" style="margin-bottom:8px">読み込み中…</div>
       <button class="btn" id="testRemind" style="width:100%">自分にテスト送信する</button>
+    </div>
+    <div class="card">
+      <h2>応援可能店舗</h2>
+      <div class="muted" style="margin-bottom:6px">所属店舗以外で、応援に入れる店舗を選びます。シフト作成画面で「応援」として紫色で表示されます。スタッフ本人には表示されません。</div>
+      <div id="supList"></div>
     </div>
     <div class="card">
       <h2>表示名（あだ名）</h2>
@@ -561,9 +572,13 @@ details.sd summary::-webkit-details-marker{display:none}
   function homeStores(p,m){ const cur=S.settings.stores||[]; return (p.stores || p.months?.[m]?.stores || []).filter(s=>cur.includes(s)).slice(0,1); }
   function assignOf(m,d,uid){ return S.sched[m]?.days?.[d]?.[uid] ?? null; }
   function segsOf(m,d,uid){ const a=assignOf(m,d,uid); return Array.isArray(a)?a:[]; }
+  // 応援可能店舗（店長だけが設定・閲覧できる）
+  function supportStores(p,m){ const cur=S.settings.stores||[], home=homeStores(p,m); return (p.support||[]).filter(s=>cur.includes(s)&&!home.includes(s)); }
+  function isSupport(p,m){ return S.storeFilter!=='all' && !homeStores(p,m).includes(S.storeFilter) && supportStores(p,m).includes(S.storeFilter); }
+  function busyElsewhere(p,m,d){ return segsOf(m,d,p.id).filter(g=>g.store!==S.storeFilter); }
   function relevant(p,m,d){
     if(S.storeFilter==='all') return true;
-    return homeStores(p,m).includes(S.storeFilter) || segsOf(m,d,p.id).some(g=>g.store===S.storeFilter);
+    return homeStores(p,m).includes(S.storeFilter) || supportStores(p,m).includes(S.storeFilter) || segsOf(m,d,p.id).some(g=>g.store===S.storeFilter);
   }
   function wishOf(p,m,d){ return p.months?.[m]?.days?.[d] || ''; }
 
@@ -621,8 +636,9 @@ details.sd summary::-webkit-details-marker{display:none}
       const ents=[]; for(const p of ppl) for(const g of segsOf(m,d,p.id)) if(S.storeFilter==='all'||g.store===S.storeFilter) ents.push({name:nick(p), ...g});
       ents.sort((a,b)=>a.s.localeCompare(b.s)); const work=new Set(ents.map(x=>x.name)).size;
       const avail=ppl.filter(p=>inStoreM(p)&&['any','time'].includes(kind(wishOf(p,m,d)))).length;
+      const sup=S.storeFilter==='all'?0:ppl.filter(p=>isSupport(p,m)&&['any','time'].includes(kind(wishOf(p,m,d)))&&!segsOf(m,d,p.id).length).length;
       const w=wd(m,d); const lv=work===0?(avail?'l1':''):work<=1?'l2':'l3';
-      c+=`<button data-d="${d}" class="${lv} ${w===6?'sat':w===0?'sun':''} ${d===S.selDay?'sel':''}"><span class="hd"><span class="n">${d}</span><span class="a">可${avail}</span></span>${ents.map(x=>`<span class="pp">${S.storeFilter==='all'?`<i class="dot" style="background:${storeColor(x.store)}"></i>`:''}${esc(x.name)}</span><span class="tt">${labShort(x.s)}-${labShort(x.e)}</span>`).join('')}</button>`;
+      c+=`<button data-d="${d}" class="${lv} ${w===6?'sat':w===0?'sun':''} ${d===S.selDay?'sel':''}"><span class="hd"><span class="n">${d}</span><span class="a">可${avail}${sup?`<b class="supn">+${sup}</b>`:''}</span></span>${ents.map(x=>`<span class="pp">${S.storeFilter==='all'?`<i class="dot" style="background:${storeColor(x.store)}"></i>`:''}${esc(x.name)}</span><span class="tt">${labShort(x.s)}-${labShort(x.e)}</span>`).join('')}</button>`;
     }
     $('#cal').innerHTML=c;
     $('#storeKey').innerHTML = S.storeFilter==='all' ? stores.map(s=>`<span><i class="dot" style="background:${storeColor(s)}"></i>${esc(s)}</span>`).join('') : '';
@@ -648,10 +664,12 @@ details.sd summary::-webkit-details-marker{display:none}
     const m=S.listMonth, d=S.selDay, n=daysIn(m), w=wd(m,d);
     const stores=S.settings.stores||[];
     const ppl=people().filter(p=>relevant(p,m,d));
-    const rank=p=>{ const a=assignOf(m,d,p.id); if(Array.isArray(a))return 0; const k=kind(wishOf(p,m,d)); return k==='any'||k==='time'?1:a==='off'?3:k==='off'?4:2; };
+    const rank=p=>{ const a=assignOf(m,d,p.id);
+      if(isSupport(p,m)) return segsOf(m,d,p.id).some(g=>g.store===S.storeFilter)?0:(busyElsewhere(p,m,d).length?6:5);
+      if(Array.isArray(a))return 0; const k=kind(wishOf(p,m,d)); return k==='any'||k==='time'?1:a==='off'?3:k==='off'?4:2; };
     ppl.sort((a,b)=>rank(a)-rank(b) || (a.name||'').localeCompare(b.name||'','ja'));
     const workN=ppl.filter(p=>segsOf(m,d,p.id).some(g=>S.storeFilter==='all'||g.store===S.storeFilter)).length;
-    const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['未入力',p=>rank(p)===2],['シフトから外した人',p=>rank(p)===3],['休み希望',p=>rank(p)===4]];
+    const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['未入力',p=>rank(p)===2],['シフトから外した人',p=>rank(p)===3],['休み希望',p=>rank(p)===4],['応援可能スタッフ（他店所属）',p=>rank(p)===5||rank(p)===6]];
     let body='';
     for(const [title,fn] of groups){
       const g=ppl.filter(fn); if(!g.length) continue;
@@ -661,10 +679,15 @@ details.sd summary::-webkit-details-marker{display:none}
         const sub=p.months?.[m]?.submittedAt;
         const tag = !sub?'<span class="tag none">未提出</span>' : k==='any'?'<span class="tag any">希望 ◎終日</span>' : k==='time'?`<span class="tag time">希望 ${esc(rangeLab(wv))}</span>` : k==='off'?'<span class="tag off">希望 ×休み</span>':'<span class="tag none">希望 未入力</span>';
         const segs=Array.isArray(a)?a:[];
-        return `<div class="person" data-uid="${esc(p.id)}">
-          <div class="top"><span class="nm">${esc(nick(p))} <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
-          <div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>
-          ${segs.length?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
+        const sp=isSupport(p,m), busy=sp && !segs.some(g=>g.store===S.storeFilter) ? busyElsewhere(p,m,d) : [];
+        const lock=busy.length>0;
+        const note = lock ? `<div class="busynote">${busy.map(g=>`${storeSpan(g.store)}で出勤 ${lab(g.s)}〜${lab(g.e)}`).join('・')}<br>所属店舗の出勤を調整すれば応援可能（店長同士で相談）</div>`
+                   : (sp && a==='off') ? '<div class="busynote">所属店舗で「休み（外す）」に決定済み</div>' : '';
+        return `<div class="person ${sp?'support':''} ${lock?'busy':''}" data-uid="${esc(p.id)}">
+          <div class="top"><span class="nm">${sp?'<span class="suptag">応援</span>':''}<span class="nmtxt">${esc(nick(p))}</span> <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
+          ${note}
+          ${lock?'':`<div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>`}
+          ${segs.length&&!lock?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
               <select data-f="store">${stores.map(s=>`<option ${s===g.store?'selected':''} style="color:${storeColor(s)}">${esc(s)}</option>`).join('')}</select>
               <select data-f="s">${opts(ALL15,g.s)}</select><span>〜</span><select data-f="e">${opts(ALL15,g.e)}</select>
               <button class="x" data-act="del" aria-label="削除">✕</button></div>`).join('')}
@@ -672,7 +695,7 @@ details.sd summary::-webkit-details-marker{display:none}
         </div>`; }).join('');
     }
     $('#dayDetail').innerHTML=`<h3><span style="color:${w===6?'var(--sat)':w===0?'var(--sun)':'inherit'}">${mNum(m)}月${d}日（${WD[w]}）</span><span class="badge ok">出勤 ${workN}人</span></h3>
-      <div class="muted">${S.storeFilter==='all'?'全店舗':esc(S.storeFilter)}の所属スタッフと、この日${S.storeFilter==='all'?'':'この店舗に'}入る人を表示しています。</div>
+      <div class="muted">${S.storeFilter==='all'?'全店舗':esc(S.storeFilter)}の所属スタッフ${S.storeFilter==='all'?'':'・応援可能スタッフ（紫）'}と、この日${S.storeFilter==='all'?'':'この店舗に'}入る人を表示しています。</div>
       ${body||'<div class="empty">スタッフがまだ登録していません</div>'}
       <div class="navday"><button class="btn" data-step="-1" ${d<=1?'disabled':''}>‹ 前の日</button><button class="btn" data-step="1" ${d>=n?'disabled':''}>次の日 ›</button></div>`;
   }
@@ -756,6 +779,10 @@ details.sd summary::-webkit-details-marker{display:none}
   function renderSettings(){
     if(!editStores) editStores=[...(S.settings.stores||[])];
     const nk=S.settings.nicknames||{};
+    $('#supList').innerHTML = people().length ? people().map(p=>{ const home=homeStores(p,''); const others=(S.settings.stores||[]).filter(s=>!home.includes(s));
+      return `<div class="mgr" style="flex-wrap:wrap"><span><b>${esc(nick(p))}</b> <span style="font-size:13px">${home.map(storeSpan).join('')||'<span class="muted">所属未設定</span>'}</span></span>
+        <span class="chips" style="gap:6px">${others.map(s=>{const on=(p.support||[]).includes(s);return `<button class="chip ${on?'on':''}" style="--sc:${storeColor(s)};padding:4px 10px;font-size:13px" data-sup="${esc(p.id)}" data-store="${esc(s)}">${on?'✓ ':'＋ '}${esc(s)}</button>`;}).join('')}</span></div>`; }).join('')
+      : '<div class="empty">まだ誰も登録していません</div>';
     const all=people();
     if(!$('#nickList').contains(document.activeElement))
       $('#nickList').innerHTML = all.length ? all.map(p=>`<div class="mgr"><span><b>${esc(p.name||'(名前なし)')}</b> <span class="muted">登録名</span></span>
@@ -773,6 +800,12 @@ details.sd summary::-webkit-details-marker{display:none}
   }
   $('#storeInputs').addEventListener('input',e=>{const i=e.target.dataset.i; if(i!=null) editStores[i]=e.target.value;});
   $('#storeInputs').addEventListener('click',e=>{const i=e.target.dataset.del; if(i==null)return; editStores.splice(Number(i),1); renderSettings();});
+  $('#supList').addEventListener('click',async e=>{ const b=e.target.closest('[data-sup]'); if(!b) return;
+    const p=S.all.find(x=>x.id===b.dataset.sup); if(!p) return;
+    const cur=new Set(p.data.support||[]); const s=b.dataset.store; const on=!cur.has(s); on?cur.add(s):cur.delete(s);
+    p.data.support=[...cur]; renderSettings();
+    try{ await api('setSupport',{uid:p.id, stores:[...cur]}); toast(on?`${s}の応援可能にしました`:`${s}の応援可能を外しました`); }
+    catch{ toast('保存できませんでした'); loadAdmin(S.listMonth); } });
   $('#nickList').addEventListener('change',async e=>{ const id=e.target.dataset.nick; if(!id) return;
     const v=e.target.value.trim(); const nk={...(S.settings.nicknames||{})};
     if(v) nk[id]=v; else delete nk[id];

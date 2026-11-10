@@ -60,12 +60,14 @@ async function publicSettings(s: Awaited<ReturnType<typeof loadSettings>>) {
   return { ...s.data, nicknames, managers, ownerId: s.owner_id };
 }
 
-function staffShape(st: any, reqs: any[]) {
+function staffShape(st: any, reqs: any[], admin = false) {
   const months: Record<string, unknown> = {};
   for (const r of reqs) {
     months[r.month] = { ...(r.data ?? {}), submittedAt: r.submitted_at, firstSubmittedAt: r.first_submitted_at };
   }
-  return { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, months };
+  const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, months };
+  if (admin) base.support = st.support_stores ?? [];   // 応援可能店舗は店長だけに返す
+  return base;
 }
 
 function cleanDays(days: unknown) {
@@ -206,7 +208,7 @@ Deno.serve(async (req) => {
           sb.from("shift_schedule").select("*").eq("month", month).maybeSingle(),
           sb.from("shift_published").select("*").eq("month", month).maybeSingle(),
         ]);
-        const all = (staff ?? []).map((st) => ({ id: st.id, data: staffShape(st, (reqs ?? []).filter((r) => r.staff_id === st.id)) }));
+        const all = (staff ?? []).map((st) => ({ id: st.id, data: staffShape(st, (reqs ?? []).filter((r) => r.staff_id === st.id), true) }));
         return json({
           all,
           schedule: sched ? { days: sched.days, updatedAt: sched.updated_at } : { days: {} },
@@ -284,6 +286,15 @@ Deno.serve(async (req) => {
         const { error } = await sb.from("shift_staff").update({ nickname: nick }).eq("id", String(body.uid ?? ""));
         if (error) throw error;
         return json({ ok: true, settings: await publicSettings(settings) });
+      }
+
+      case "setSupport": {
+        needAdmin();
+        const valid = (settings.data.stores as string[]) ?? [];
+        const list = Array.isArray(body.stores) ? body.stores.map(String).filter((x: string) => valid.includes(x)) : [];
+        const { error } = await sb.from("shift_staff").update({ support_stores: [...new Set(list)] }).eq("id", String(body.uid ?? ""));
+        if (error) throw error;
+        return json({ ok: true });
       }
 
       case "testRemind": {
