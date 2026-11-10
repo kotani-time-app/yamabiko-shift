@@ -135,6 +135,11 @@ textarea{min-height:70px;resize:vertical}
 .person.busy{opacity:.85}
 .busynote{font-size:12px;color:#6b5a8a;margin-top:4px;line-height:1.5}
 .cal button .supn{color:#7b4fc0;font-weight:700}
+.lrow{padding:10px 0;border-bottom:1px solid var(--line)}
+.lrow:last-child{border:0}
+.lrow .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lrow ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:#a33}
+.ktsel{width:auto;max-width:56%;padding:6px 8px;font-size:13px}
 .searchbox{margin-top:14px;padding-top:10px;border-top:2px dashed var(--line)}
 .searchbox input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin:4px 0 6px;font-size:15px}
 .sechead{font-size:12px;color:var(--sub);margin:14px 0 2px;font-weight:700}
@@ -242,6 +247,12 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="stafflist" id="staffList"></div>
     </div>
     <div class="card">
+      <h2>遅刻チェック（月16日以上出勤のアルバイト）</h2>
+      <div class="muted" style="margin-bottom:8px">勤怠給料システムの出勤打刻と、このアプリのシフト開始時刻を比べています。1分でも遅れたら遅刻です。遅刻が1回でもあると、出勤手当は付きません。</div>
+      <div id="lateBox" class="muted">読み込み中…</div>
+      <button class="btn small" id="lateReload" style="margin-top:8px">最新の情報に更新</button>
+    </div>
+    <div class="card">
       <h2>LINEで連絡</h2>
       <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
         <a class="btn line" id="lineAsk" target="_blank" rel="noopener">LINEで希望提出をお願いする</a>
@@ -279,6 +290,11 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-bottom:8px">毎月21日0時に、翌月のシフト希望を提出していないスタッフへ、LINE公式アカウントから個別にお知らせを送ります（公式アカウントを友だち追加している人のみ）。</div>
       <div id="remindState" class="muted" style="margin-bottom:8px">読み込み中…</div>
       <button class="btn" id="testRemind" style="width:100%">自分にテスト送信する</button>
+    </div>
+    <div class="card">
+      <h2>勤怠給料システムとの紐付け</h2>
+      <div class="muted" style="margin-bottom:6px">このアプリのスタッフと、勤怠給料システムのスタッフを1対1で結びつけます。結びつけた人だけ遅刻チェックができます。名前が同じ人は「候補」が出るので、押すだけで結びつけられます。</div>
+      <div id="ktList" class="muted">読み込み中…</div>
     </div>
     <div class="card">
       <h2>応援可能店舗</h2>
@@ -402,8 +418,8 @@ details.sd summary::-webkit-details-marker{display:none}
     S.view=v; $$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
     ['submit','shift','list','settings'].forEach(x=>$('#v-'+x).classList.toggle('hide',x!==v));
     $('#saveBar').classList.toggle('hide',v!=='submit' || !S.ready);
-    if(S.ready && v==='list') loadAdmin(S.listMonth);
-    if(S.ready && v==='settings'){ loadAdmin(S.listMonth); loadRemind(); }
+    if(S.ready && v==='list'){ loadAdmin(S.listMonth); loadLateness(); }
+    if(S.ready && v==='settings'){ loadAdmin(S.listMonth); loadRemind(); loadKt(); }
     if(S.ready && v==='shift') loadPub(S.pubMonth);
     render();
   }
@@ -547,7 +563,8 @@ details.sd summary::-webkit-details-marker{display:none}
       if(S.pending?.[m]) return;                 // 書き込み中はローカルを優先
       S.all=r.all; S.sched[m]=r.schedule; S.pub[m]=r.published; S.settings={...DEFAULTS,...r.settings};
       if(S.view==='list' && S.listMonth===m && !editingDay()) renderList();
-      if(S.view==='settings') renderSettings();
+      if(S.view==='settings'){ renderSettings(); renderKt(); }
+      if(S.view==='list') renderLateness();
     }catch(e){ if(!quiet) toast('データを読み込めませんでした'); }
   }
   async function loadPub(m){
@@ -584,8 +601,8 @@ details.sd summary::-webkit-details-marker{display:none}
   }
   function wishOf(p,m,d){ return p.months?.[m]?.days?.[d] || ''; }
 
-  $('#lPrev').onclick=()=>{S.listMonth=shift(S.listMonth,-1);S.selDay=1;renderList();loadAdmin(S.listMonth);};
-  $('#lNext').onclick=()=>{S.listMonth=shift(S.listMonth,1);S.selDay=1;renderList();loadAdmin(S.listMonth);};
+  $('#lPrev').onclick=()=>{S.listMonth=shift(S.listMonth,-1);S.selDay=1;renderList();loadAdmin(S.listMonth);loadLateness();};
+  $('#lNext').onclick=()=>{S.listMonth=shift(S.listMonth,1);S.selDay=1;renderList();loadAdmin(S.listMonth);loadLateness();};
   $('#storeFilter').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.storeFilter=b.dataset.s;renderList();});
   $('#cal').addEventListener('click',e=>{const b=e.target.closest('button[data-d]');if(!b)return;S.selDay=Number(b.dataset.d);renderList();
     $('#dayDetail').scrollIntoView({behavior:'smooth',block:'start'});});
@@ -661,6 +678,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const notyet=mine.filter(p=>!p.months?.[m]?.submittedAt).map(p=>nick(p)).filter(Boolean);
     $('#lineRemind').href=lineUrl(`【シフト希望 提出のお願い】\n${mNum(m)}月のシフト希望がまだの方は提出をお願いします（締切 ${deadlineLabel(m)}）。\n${notyet.length?'未提出：'+notyet.join('、')+'\n':''}${PAGE_URL}`);
     $('#lineRemind').classList.toggle('hide', !notyet.length);
+    renderLateness();
   }
 
   function personRow(p,m,d,searched){
@@ -726,6 +744,62 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="navday"><button class="btn" data-step="-1" ${d<=1?'disabled':''}>‹ 前の日</button><button class="btn" data-step="1" ${d>=n?'disabled':''}>次の日 ›</button></div>`;
   }
   $('#dayDetail').addEventListener('input',e=>{ if(e.target.id!=='daySearch') return; S.daySearch=e.target.value; $('#dayResults').innerHTML=searchResults(S.listMonth,S.selDay); });
+
+  // ---------- 勤怠給料システム連携 ----------
+  const KT_STORE={'嬉野':'梅田'};
+  const ktStoreOf=s=>KT_STORE[s]||s;
+  const normName=s=>String(s||'').replace(/[\s　]/g,'');
+  function hm(iso){ const d=new Date(iso); return d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'}); }
+  async function loadLateness(force){
+    const m=S.listMonth;
+    if(!force && S.late?.month===m){ renderLateness(); return; }
+    $('#lateBox').textContent='読み込み中…';
+    try{ const r=await api('lateness',{month:m}); S.late={month:m,...r}; renderLateness(); }
+    catch(e){ $('#lateBox').textContent = e.code==='kt_not_configured'?'勤怠給料システムとの接続が未設定です':'勤怠給料システムから読み込めませんでした'; }
+  }
+  function renderLateness(){
+    const L=S.late; if(!L||L.month!==S.listMonth) return;
+    const min=L.rule?.minDays||16, type=L.rule?.type||'アルバイト';
+    let list=(L.staff||[]).filter(k=>k.type===type && k.days>=min);
+    if(S.storeFilter!=='all') list=list.filter(k=>k.store===ktStoreOf(S.storeFilter));
+    list.sort((a,b)=>b.late.length-a.late.length||b.days-a.days);
+    const unlinked=list.filter(k=>!k.uid).length;
+    $('#lateBox').innerHTML = !list.length ? `${mLabel(S.listMonth)}は、まだ${min}日以上出勤したアルバイトがいません。`
+      : list.map(k=>{ const p=S.all.find(x=>x.id===k.uid); const nm=p?nick(p):k.name;
+          const badge=!k.uid?'<span class="badge warn">シフト未連携</span>':k.late.length?`<span class="badge lock">遅刻${k.late.length}回・手当なし</span>`:'<span class="badge ok">遅刻なし・手当対象</span>';
+          return `<div class="lrow"><div class="top"><span><b>${esc(nm)}</b> <span class="muted">${esc(k.store)}・${k.days}日出勤</span></span>${badge}</div>
+            ${k.late.length?`<ul>${k.late.map(x=>`<li>${Number(x.date.slice(5,7))}/${Number(x.date.slice(8))} ${hm(x.start)}開始 → ${hm(x.clockIn)}出勤（${x.minutes}分）</li>`).join('')}</ul>`:''}
+            ${!k.uid?'<div class="muted">設定の「勤怠給料システムとの紐付け」で結びつけると判定できます</div>':''}</div>`; }).join('')
+        + (unlinked?`<div class="muted" style="margin-top:6px">※シフト未連携の${unlinked}人は遅刻を判定できません</div>`:'');
+  }
+  $('#lateReload').onclick=()=>loadLateness(true);
+
+  async function loadKt(){
+    if(!S.admin) return;
+    try{ const r=await api('ktStaff'); S.kt=r.staff||[]; renderKt(); }
+    catch(e){ $('#ktList').textContent = e.code==='kt_not_configured'?'勤怠給料システムとの接続が未設定です':'勤怠給料システムから読み込めませんでした'; }
+  }
+  function renderKt(){
+    if(!S.kt) return;
+    const used=new Map(S.all.filter(p=>p.data.ktId).map(p=>[p.data.ktId,p.id]));
+    const ppl=people();
+    if(!ppl.length){ $('#ktList').innerHTML='<div class="empty">まだ誰も登録していません</div>'; return; }
+    $('#ktList').innerHTML=ppl.map(p=>{
+      const cur=p.ktId, curKt=S.kt.find(k=>k.id===cur);
+      const cand=!cur && S.kt.find(k=>!used.has(k.id) && k.active && normName(k.name)===normName(p.name));
+      const opts='<option value="">（結びつけない）</option>'+['梅田','京橋','布施'].map(st=>`<optgroup label="${st}">${S.kt.filter(k=>k.store_name===st&&(k.active||k.id===cur)).map(k=>`<option value="${k.id}" ${k.id===cur?'selected':''} ${used.has(k.id)&&k.id!==cur?'disabled':''}>${esc(k.name)}（${esc(k.employment_type)}）${used.has(k.id)&&k.id!==cur?' 使用中':''}</option>`).join('')}</optgroup>`).join('');
+      return `<div class="mgr" style="flex-wrap:wrap"><span><b>${esc(nick(p))}</b> <span class="muted">${esc(p.name||'')}</span>${curKt?` <span class="badge ok">✓ ${esc(curKt.name)}</span>`:''}</span>
+        ${cand?`<button class="toggle" data-ktlink="${esc(p.id)}" data-kt="${cand.id}">候補：${esc(cand.name)}（${esc(cand.store_name)}）と結びつける</button>`:''}
+        <select class="ktsel" data-ktsel="${esc(p.id)}">${opts}</select></div>`; }).join('');
+  }
+  async function setKt(uid,ktId){
+    const p=S.all.find(x=>x.id===uid); if(!p) return;
+    p.data.ktId=ktId||null; renderKt();
+    try{ await api('setKtLink',{uid,ktId:ktId||null}); toast(ktId?'結びつけました':'結びつけを外しました'); S.late=null; }
+    catch{ toast('保存できませんでした'); loadAdmin(S.listMonth); }
+  }
+  $('#ktList').addEventListener('click',e=>{ const b=e.target.closest('[data-ktlink]'); if(b) setKt(b.dataset.ktlink,b.dataset.kt); });
+  $('#ktList').addEventListener('change',e=>{ const s=e.target.closest('[data-ktsel]'); if(s) setKt(s.dataset.ktsel,s.value); });
 
   // ---------- 公開・共有 ----------
   function buildPublished(m){

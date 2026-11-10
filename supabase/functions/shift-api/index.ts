@@ -66,7 +66,7 @@ function staffShape(st: any, reqs: any[], admin = false) {
     months[r.month] = { ...(r.data ?? {}), submittedAt: r.submitted_at, firstSubmittedAt: r.first_submitted_at };
   }
   const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, months };
-  if (admin) base.support = st.support_stores ?? [];   // 応援可能店舗は店長だけに返す
+  if (admin) { base.support = st.support_stores ?? []; base.ktId = st.kt_staff_id ?? null; }   // 店長だけに返す
   return base;
 }
 
@@ -122,6 +122,42 @@ async function runRemind(month: string) {
   const result = to.length ? await linePush(to, remindText(month)) : "none";
   await sb.from("shift_reminders").insert({ month, recipients: to, result });
   return { month, count: to.length, result };
+}
+
+// ---- 勤怠給料システム（KOTANI TIME）との連携 ----
+const KT_STORE: Record<string, string> = { "嬉野": "梅田" };   // シフトアプリの店舗名 → 勤怠の店舗名
+async function ktCall(action: string, payload: Record<string, unknown> = {}) {
+  const { data } = await sb.from("shift_settings").select("kt_url,kt_key").eq("id", 1).single();
+  if (!data?.kt_url || !data?.kt_key) throw new HttpError(503, "kt_not_configured");
+  const r = await fetch(data.kt_url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, key: data.kt_key, ...payload }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new HttpError(502, "kt_error");
+  return j;
+}
+// その月の「各スタッフ・各日の最初の開始時刻」を勤怠側へ送る（紐付け済みのスタッフのみ）
+async function syncStarts(month: string) {
+  const [{ data: sched }, { data: staff }] = await Promise.all([
+    sb.from("shift_schedule").select("days").eq("month", month).maybeSingle(),
+    sb.from("shift_staff").select("id,kt_staff_id").not("kt_staff_id", "is", null),
+  ]);
+  const kt = new Map((staff ?? []).map((s) => [s.id, s.kt_staff_id]));
+  const rows: unknown[] = [];
+  for (const [d, m] of Object.entries((sched?.days ?? {}) as Record<string, Record<string, unknown>>)) {
+    for (const [uid, v] of Object.entries(m)) {
+      const ktId = kt.get(uid); if (!ktId || !Array.isArray(v) || !v.length) continue;
+      const first = [...v].sort((a: any, b: any) => a.s.localeCompare(b.s))[0] as any;
+      const [hh, mm] = first.s.split(":").map(Number);
+      const date = `${month}-${String(d).padStart(2, "0")}`;
+      const start = new Date(Date.parse(`${date}T00:00:00+09:00`) + (hh * 60 + mm) * 60000).toISOString();
+      rows.push({ kotani_staff_id: ktId, work_date: date, start_at: start, store_name: KT_STORE[first.store] ?? first.store });
+    }
+  }
+  return await ktCall("syncStarts", { month, rows });
+}
+function background(p: Promise<unknown>) {
+  const safe = p.catch((e) => console.error("background", e));
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(safe); else return safe;
 }
 
 Deno.serve(async (req) => {
@@ -232,6 +268,7 @@ Deno.serve(async (req) => {
         }
         const { error } = await sb.rpc("shift_set_assign", { p_month: month, p_day: String(day), p_uid: target, p_val: val });
         if (error) throw error;
+        background(syncStarts(month));
         return json({ ok: true, updatedAt: new Date().toISOString() });
       }
 
@@ -258,6 +295,7 @@ Deno.serve(async (req) => {
         const now = new Date().toISOString();
         const { error } = await sb.from("shift_published").upsert({ month, days, offs, published_at: now }, { onConflict: "month" });
         if (error) throw error;
+        background(syncStarts(month));
         return json({ ok: true, published: { days, offs, publishedAt: now } });
       }
 
@@ -295,6 +333,31 @@ Deno.serve(async (req) => {
         const { error } = await sb.from("shift_staff").update({ support_stores: [...new Set(list)] }).eq("id", String(body.uid ?? ""));
         if (error) throw error;
         return json({ ok: true });
+      }
+
+      case "ktStaff": {
+        needAdmin();
+        return json(await ktCall("staff"));
+      }
+
+      case "setKtLink": {
+        needAdmin();
+        const ktId = body.ktId ? String(body.ktId) : null;
+        if (ktId && !/^[0-9a-f-]{36}$/.test(ktId)) throw new HttpError(400, "bad_id");
+        const { error } = await sb.from("shift_staff").update({ kt_staff_id: ktId }).eq("id", String(body.uid ?? ""));
+        if (error) throw error;
+        const { data: months } = await sb.from("shift_schedule").select("month").order("month", { ascending: false }).limit(3);
+        background(Promise.all((months ?? []).map((m) => syncStarts(m.month))));
+        return json({ ok: true });
+      }
+
+      case "lateness": {
+        needAdmin(); needMonth();
+        await syncStarts(month);   // 最新のシフトで判定する
+        const kt = await ktCall("lateness", { month });
+        const { data: staff } = await sb.from("shift_staff").select("id,kt_staff_id");
+        const byKt = new Map((staff ?? []).filter((s) => s.kt_staff_id).map((s) => [s.kt_staff_id, s.id]));
+        return json({ rule: kt.rule, staff: (kt.staff ?? []).map((k: any) => ({ ...k, uid: byKt.get(k.id) ?? null })) });
       }
 
       case "testRemind": {
