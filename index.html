@@ -259,6 +259,12 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-bottom:6px">「＋ 許可する」を押すと、その人が「シフト作成」と「設定」を開けるようになります（もう一度押すと取り消し。オーナーのあなたは常に可）。一覧に出ない人は、先に「希望を出す」で名前を保存してもらってください。</div>
       <div id="mgrList"></div>
     </div>
+    <div class="card owneronly hide">
+      <h2>未提出者への自動LINE</h2>
+      <div class="muted" style="margin-bottom:8px">毎月21日0時に、翌月のシフト希望を提出していないスタッフへ、LINE公式アカウントから個別にお知らせを送ります（公式アカウントを友だち追加している人のみ）。</div>
+      <div id="remindState" class="muted" style="margin-bottom:8px">読み込み中…</div>
+      <button class="btn" id="testRemind" style="width:100%">自分にテスト送信する</button>
+    </div>
     <div class="card">
       <h2>表示名（あだ名）</h2>
       <div class="muted" style="margin-bottom:6px">カレンダー・シフト表・LINEに送るシフトなど、アプリ内の表示すべてに使われます（2〜3文字がおすすめ）。空欄なら登録名を表示します。入力して枠の外をタップすると保存されます。</div>
@@ -377,7 +383,7 @@ details.sd summary::-webkit-details-marker{display:none}
     ['submit','shift','list','settings'].forEach(x=>$('#v-'+x).classList.toggle('hide',x!==v));
     $('#saveBar').classList.toggle('hide',v!=='submit' || !S.ready);
     if(S.ready && v==='list') loadAdmin(S.listMonth);
-    if(S.ready && v==='settings') loadAdmin(S.listMonth);
+    if(S.ready && v==='settings'){ loadAdmin(S.listMonth); loadRemind(); }
     if(S.ready && v==='shift') loadPub(S.pubMonth);
     render();
   }
@@ -764,6 +770,19 @@ details.sd summary::-webkit-details-marker{display:none}
     const v=e.target.value.trim(); const nk={...(S.settings.nicknames||{})};
     if(v) nk[id]=v; else delete nk[id];
     try{ const r=await api('setNickname',{uid:id, nickname:v}); S.settings={...DEFAULTS,...r.settings}; toast(v?`表示名を「${v}」にしました`:'表示名を登録名に戻しました'); renderSettings(); }catch{ toast('保存できませんでした'); } });
+  async function loadRemind(){
+    if(!S.isOwner) return;
+    try{
+      const r=await api('reminders');
+      const hist=r.reminders.length?r.reminders.map(x=>`${mNum(x.month)}月分：${new Date(x.sentAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} に ${x.count}人へ送信${x.ok?'':'（一部失敗）'}`).join('<br>'):'送信履歴はまだありません';
+      $('#remindState').innerHTML = (r.hasToken?'<span class="badge ok">設定済み</span>':'<span class="badge warn">送信用の鍵が未設定</span>')
+        + `<div style="margin-top:6px">次回：${mNum(r.next)}月分を ${(()=>{const [y,m]=r.next.split('-').map(Number);const d=new Date(y,m-2,21);return `${d.getMonth()+1}/21 0:00`;})()} に送信</div><div style="margin-top:6px">${hist}</div>`;
+    }catch{ $('#remindState').textContent='状態を読み込めませんでした'; }
+  }
+  $('#testRemind').onclick=async()=>{
+    try{ const r=await api('testRemind'); toast(r.ok?'送信しました。LINEを確認してください':'送れませんでした（'+(r.result==='no_token'?'鍵が未設定':'公式アカウントを友だち追加しているか確認')+'）'); }
+    catch{ toast('送れませんでした'); }
+  };
   $('#mgrList').addEventListener('click',async e=>{ const b=e.target.closest('[data-mgr]'); if(!b||!S.isOwner) return;
     const id=b.dataset.mgr; const mg=[...(S.settings.managers||[])]; const i=mg.indexOf(id); i>=0?mg.splice(i,1):mg.push(id);
     try{ const r=await api('setManager',{uid:id, on:i<0}); S.settings={...DEFAULTS,...r.settings}; toast(i>=0?'許可を外しました':'シフト作成を許可しました'); renderSettings(); }catch{ toast('変更できませんでした'); } });

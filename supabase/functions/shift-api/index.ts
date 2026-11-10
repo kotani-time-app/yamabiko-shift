@@ -7,6 +7,8 @@ const sb = createClient(
   { auth: { persistSession: false } },
 );
 const CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "2012523700";
+const MSG_TOKEN = Deno.env.get("LINE_MESSAGING_TOKEN") ?? "";
+const APP_URL = "https://liff.line.me/2012523700-AHlALqP2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -78,11 +80,59 @@ function cleanDays(days: unknown) {
   return out;
 }
 
+// ---- LINEメッセージ送信（Messaging API） ----
+async function linePush(to: string[], text: string): Promise<string> {
+  if (!MSG_TOKEN) return "no_token";
+  const results: string[] = [];
+  for (let i = 0; i < to.length; i += 500) {
+    const r = await fetch("https://api.line.me/v2/bot/message/multicast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${MSG_TOKEN}` },
+      body: JSON.stringify({ to: to.slice(i, i + 500), messages: [{ type: "text", text }] }),
+    });
+    results.push(r.ok ? "ok" : `${r.status}:${(await r.text()).slice(0, 200)}`);
+  }
+  return results.join(",");
+}
+function jstNow() { return new Date(Date.now() + 9 * 3600 * 1000); }
+function nextMonthJst() {
+  const n = jstNow(); const d = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function upcomingRemindMonth() {
+  const n = jstNow(); const add = n.getUTCDate() >= 21 ? 2 : 1;
+  const d = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + add, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function remindText(month: string) {
+  return `【やまびこシフト】\n${Number(month.slice(5))}月のシフト希望がまだ提出されていません。\n締切は過ぎましたが、今からでも提出できます（提出後の変更はできません）。\n\nこちらから提出してください👇\n${APP_URL}`;
+}
+async function runRemind(month: string) {
+  const { data: done } = await sb.from("shift_reminders").select("month").eq("month", month).maybeSingle();
+  if (done) return { skipped: true };
+  if (!MSG_TOKEN) return { error: "no_token" };
+  const [{ data: staff }, { data: reqs }] = await Promise.all([
+    sb.from("shift_staff").select("id"),
+    sb.from("shift_requests").select("staff_id,submitted_at").eq("month", month),
+  ]);
+  const submitted = new Set((reqs ?? []).filter((r) => r.submitted_at).map((r) => r.staff_id));
+  const to = (staff ?? []).map((s) => s.id).filter((id) => !submitted.has(id));
+  const result = to.length ? await linePush(to, remindText(month)) : "none";
+  await sb.from("shift_reminders").insert({ month, recipients: to, result });
+  return { month, count: to.length, result };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     const body = await req.json().catch(() => ({}));
     const { action, idToken } = body ?? {};
+    // 自動リマインド（毎月21日0時にデータベースの予約処理から呼ばれる）
+    if (action === "cronRemind") {
+      const s0 = await sb.from("shift_settings").select("cron_key").eq("id", 1).single();
+      if (!body.cronKey || body.cronKey !== s0.data?.cron_key) throw new HttpError(403, "forbidden");
+      return json(await runRemind(nextMonthJst()));
+    }
     if (typeof idToken !== "string" || !idToken) throw new HttpError(401, "no_token");
     const user = await verifyIdToken(idToken);
     const uid = user.sub;
@@ -234,6 +284,18 @@ Deno.serve(async (req) => {
         const { error } = await sb.from("shift_staff").update({ nickname: nick }).eq("id", String(body.uid ?? ""));
         if (error) throw error;
         return json({ ok: true, settings: await publicSettings(settings) });
+      }
+
+      case "testRemind": {
+        if (!isOwner) throw new HttpError(403, "forbidden");
+        const result = await linePush([uid], "【やまびこシフト】テスト送信です。\nこのメッセージが届いていれば、毎月21日0時の自動リマインドが届きます。\n" + APP_URL);
+        return json({ ok: result === "ok", result });
+      }
+
+      case "reminders": {
+        needAdmin();
+        const { data } = await sb.from("shift_reminders").select("month,sent_at,recipients,result").order("month", { ascending: false }).limit(6);
+        return json({ reminders: (data ?? []).map((r) => ({ month: r.month, sentAt: r.sent_at, count: (r.recipients as unknown[]).length, ok: r.result === "ok" || r.result === "none" })), hasToken: !!MSG_TOKEN, next: upcomingRemindMonth() });
       }
 
       case "setManager": {
