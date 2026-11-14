@@ -434,12 +434,15 @@ Deno.serve(async (req) => {
         return json({ rule: kt.rule, staff: (kt.staff ?? []).map((k: any) => ({ ...k, uid: byKt.get(k.id) ?? null })) });
       }
 
-      case "setRemind": {
+      case "setRemindFor": {
+        needAdmin();
         const min = body.min == null ? null : Number(body.min);
         if (min !== null && ![30, 60, 120, 180, 360, 720, 1440].includes(min)) throw new HttpError(400, "bad_min");
-        const { error } = await sb.from("shift_staff").upsert({ id: uid, name: meRow?.name || user.name, remind_min: min }, { onConflict: "id" });
+        const uids = Array.isArray(body.uids) ? body.uids.map(String).slice(0, 500) : [];
+        if (!uids.length) throw new HttpError(400, "no_uids");
+        const { error } = await sb.from("shift_staff").update({ remind_min: min }).in("id", uids);
         if (error) throw error;
-        return json({ ok: true, remindMin: min });
+        return json({ ok: true });
       }
 
       case "testRemind": {

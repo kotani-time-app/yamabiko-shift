@@ -222,15 +222,6 @@ details.sd summary::-webkit-details-marker{display:none}
       <button id="pNext" aria-label="次の月">›</button>
     </div>
     <div id="pBody"></div>
-    <div class="card" id="remindCard">
-      <h2>出勤リマインダー</h2>
-      <div class="muted" style="margin-bottom:8px">出勤時刻の前に、LINEで出勤予定をお知らせします（公開されたシフトが対象）。LINE公式アカウント「やまびこシフト」を友だち追加している必要があります。</div>
-      <select id="remindSel">
-        <option value="">オフ（お知らせしない）</option>
-        <option value="30">30分前</option><option value="60">1時間前</option><option value="120">2時間前</option>
-        <option value="180">3時間前</option><option value="360">6時間前</option><option value="720">12時間前</option><option value="1440">前日（24時間前）</option>
-      </select>
-    </div>
   </section>
 
   <!-- シフト作成（店長） -->
@@ -296,9 +287,15 @@ details.sd summary::-webkit-details-marker{display:none}
     </div>
     <div class="card owneronly hide">
       <h2>LINEのお知らせ（自動）</h2>
-      <div class="muted" style="margin-bottom:8px">・毎月21日0時：翌月のシフト希望が未提出のスタッフへお知らせ<br>・出勤リマインダー：オンにしたスタッフへ、出勤前にお知らせ<br>・遅刻アラート：出勤時刻を過ぎても勤怠システムで出勤の打刻がないとき、本人・オーナー・シフト作成を許可した人へお知らせ（勤怠と紐付け済みのスタッフのみ）<br>いずれも公式アカウントを友だち追加している人だけに届きます。無料プランは月200通までです。</div>
+      <div class="muted" style="margin-bottom:8px">・毎月21日0時：翌月のシフト希望が未提出のスタッフへお知らせ<br>・出勤リマインダー：下の「出勤リマインダー」でオンにしたスタッフへ、出勤前にお知らせ<br>・遅刻アラート：出勤時刻を過ぎても勤怠システムで出勤の打刻がないとき、本人・オーナー・シフト作成を許可した人へお知らせ（勤怠と紐付け済みのスタッフのみ）<br>いずれも公式アカウントを友だち追加している人だけに届きます。無料プランは月200通までです。</div>
       <div id="remindState" class="muted" style="margin-bottom:8px">読み込み中…</div>
       <button class="btn" id="testRemind" style="width:100%">自分にテスト送信する</button>
+    </div>
+    <div class="card">
+      <h2>出勤リマインダー</h2>
+      <div class="muted" style="margin-bottom:6px">オンにしたスタッフへ、出勤時刻の前にLINEで出勤予定をお知らせします（公開済みのシフトが対象・公式アカウントを友だち追加している人のみ）。1回の出勤ごとに1通使います。</div>
+      <div class="row" style="margin-bottom:8px"><span class="muted">全員まとめて：</span><select id="remindAll" class="ktsel"><option value="-">選んでください</option></select></div>
+      <div id="remindList"></div>
     </div>
     <div class="card">
       <h2>勤怠給料システムとの紐付け</h2>
@@ -332,7 +329,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-14c</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-14d</div>
   </section>
 </main>
 
@@ -429,7 +426,7 @@ details.sd summary::-webkit-details-marker{display:none}
     ['submit','shift','list','settings'].forEach(x=>$('#v-'+x).classList.toggle('hide',x!==v));
     $('#saveBar').classList.toggle('hide',v!=='submit' || !S.ready);
     if(S.ready && v==='list'){ loadAdmin(S.listMonth); loadLateness(); }
-    if(S.ready && v==='settings'){ loadAdmin(S.listMonth); loadRemind(); loadKt(); }
+    if(S.ready && v==='settings'){ loadAdmin(S.listMonth); loadRemind(); loadKt(); renderRemindList(); }
     if(S.ready && v==='shift') loadPub(S.pubMonth);
     render();
   }
@@ -573,7 +570,7 @@ details.sd summary::-webkit-details-marker{display:none}
       if(S.pending?.[m]) return;                 // 書き込み中はローカルを優先
       S.all=r.all; S.sched[m]=r.schedule; S.pub[m]=r.published; S.settings={...DEFAULTS,...r.settings};
       if(S.view==='list' && S.listMonth===m && !editingDay()) renderList();
-      if(S.view==='settings'){ renderSettings(); renderKt(); }
+      if(S.view==='settings'){ renderSettings(); renderKt(); renderRemindList(); }
       if(S.view==='list') renderLateness();
     }catch(e){ if(!quiet) toast('データを読み込めませんでした'); }
   }
@@ -805,6 +802,24 @@ details.sd summary::-webkit-details-marker{display:none}
         ${cand?`<button class="toggle" data-ktlink="${esc(p.id)}" data-kt="${cand.id}">候補：${esc(cand.name)}（${esc(cand.store_name)}）と結びつける</button>`:''}
         <select class="ktsel" data-ktsel="${esc(p.id)}">${opts}</select></div>`; }).join('');
   }
+  const REMIND_OPTS=[['','オフ'],['30','30分前'],['60','1時間前'],['120','2時間前'],['180','3時間前'],['360','6時間前'],['720','12時間前'],['1440','前日（24時間前）']];
+  function renderRemindList(){
+    if(!$('#remindAll').dataset.ready){ $('#remindAll').innerHTML='<option value="-">選んでください</option>'+REMIND_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join(''); $('#remindAll').dataset.ready=1; }
+    const ppl=people();
+    if($('#remindList').contains(document.activeElement)) return;
+    $('#remindList').innerHTML = ppl.length ? ppl.map(p=>`<div class="mgr"><span><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,'').map(storeSpan).join('')}</span></span>
+      <select class="ktsel" data-remind="${esc(p.id)}">${REMIND_OPTS.map(([v,l])=>`<option value="${v}" ${String(p.remindMin||'')===v?'selected':''}>${l}</option>`).join('')}</select></div>`).join('')
+      : '<div class="empty">まだ誰も登録していません</div>';
+  }
+  async function setRemindFor(uids,v){
+    const min=v?Number(v):null;
+    try{ await api('setRemindFor',{uids,min}); for(const id of uids){ const p=S.all.find(x=>x.id===id); if(p) p.data.remindMin=min; }
+      toast(uids.length>1?`全員を「${REMIND_OPTS.find(o=>o[0]===v)[1]}」にしました`:`「${REMIND_OPTS.find(o=>o[0]===v)[1]}」にしました`); }
+    catch{ toast('保存できませんでした'); }
+    renderRemindList();
+  }
+  $('#remindList').addEventListener('change',e=>{ const s=e.target.closest('[data-remind]'); if(s){ s.blur(); setRemindFor([s.dataset.remind],s.value); } });
+  $('#remindAll').addEventListener('change',e=>{ const v=e.target.value; e.target.value='-'; if(v==='-') return; setRemindFor(people().map(p=>p.id),v); });
   async function setKt(uid,ktId){
     const p=S.all.find(x=>x.id===uid); if(!p) return;
     p.data.ktId=ktId||null; renderKt();
@@ -864,14 +879,7 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#pPrev').onclick=()=>{S.pubMonth=shift(S.pubMonth,-1);renderPub();loadPub(S.pubMonth);};
   $('#pNext').onclick=()=>{S.pubMonth=shift(S.pubMonth,1);renderPub();loadPub(S.pubMonth);};
   $('#pBody').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.pubStore=b.dataset.s;renderPub();});
-  function renderRemind(){ const v=S.mine?.remindMin; if(document.activeElement!==$('#remindSel')) $('#remindSel').value = v?String(v):''; }
-  $('#remindSel').addEventListener('change',async e=>{
-    const v=e.target.value; const min=v?Number(v):null;
-    try{ const r=await api('setRemind',{min}); S.mine={...(S.mine||{months:{}}),remindMin:r.remindMin}; toast(min?`${e.target.selectedOptions[0].text}にお知らせします`:'リマインダーをオフにしました'); }
-    catch{ toast('保存できませんでした'); renderRemind(); }
-  });
   function renderPub(){
-    renderRemind();
     const m=S.pubMonth, pub=S.pub[m], n=daysIn(m);
     $('#pLabel').textContent=mLabel(m);
     $('#pState').innerHTML = pub?`<span class="badge ok">公開 ${new Date(pub.publishedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`:'';
