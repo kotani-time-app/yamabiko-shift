@@ -97,6 +97,15 @@ Deno.serve(async (req) => {
       });
       return json({ staff: result, rule: { minDays: s.bonus_min_days, type: s.bonus_employment_type, amount: s.bonus_amount } });
     }
+    // 出勤時刻を過ぎても出勤打刻がないシフト（遅刻アラート用）
+    if (body.action === "noClockIn") {
+      const from = Date.parse(body.from), to = Date.parse(body.to);
+      if (isNaN(from) || isNaN(to) || to - from > 6 * 3600e3) return json({ error: "bad_range" }, 400);
+      const { data, error } = await db.from("kt_lateness").select("kotani_staff_id,work_date,start_at,store_name,first_clock_in")
+        .gte("start_at", new Date(from).toISOString()).lt("start_at", new Date(to).toISOString()).is("first_clock_in", null);
+      if (error) throw error;
+      return json({ rows: data ?? [] });
+    }
     return json({ error: "unknown_action" }, 400);
   } catch (e) {
     console.error(e);

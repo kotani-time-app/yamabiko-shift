@@ -65,7 +65,7 @@ function staffShape(st: any, reqs: any[], admin = false) {
   for (const r of reqs) {
     months[r.month] = { ...(r.data ?? {}), submittedAt: r.submitted_at, firstSubmittedAt: r.first_submitted_at };
   }
-  const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, months };
+  const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, remindMin: st.remind_min ?? null, months };
   if (admin) { base.support = st.support_stores ?? []; base.ktId = st.kt_staff_id ?? null; }   // 店長だけに返す
   return base;
 }
@@ -154,6 +154,70 @@ async function syncStarts(month: string) {
   }
   return await ktCall("syncStarts", { month, rows });
 }
+// ---- 出勤リマインダーと遅刻アラート（5分ごとに cronTick で実行） ----
+const WD = ["日", "月", "火", "水", "木", "金", "土"];
+function storeMark(s: string) { return s.includes("嬉野") ? "🔴" : s.includes("京橋") ? "🔵" : s.includes("布施") ? "🟢" : "・"; }
+function lab(t: string) { const [h, m] = t.split(":").map(Number); return `${h >= 24 ? "翌" + (h - 24) : h}:${String(m).padStart(2, "0")}`; }
+function jstParts(ms: number) { const d = new Date(ms + 9 * 3600e3); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), wd: d.getUTCDay() }; }
+const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
+async function claimAlert(kind: string, staffId: string, ref: string) {
+  const { error } = await sb.from("shift_alerts").insert({ kind, staff_id: staffId, ref });
+  return !error;   // 既に送っていれば一意制約で失敗する（二重送信防止）
+}
+async function runReminders(now: number) {
+  const { data: staff } = await sb.from("shift_staff").select("id,remind_min").not("remind_min", "is", null);
+  if (!staff?.length) return { reminders: 0 };
+  const maxMin = Math.max(...staff.map((s) => s.remind_min));
+  const months = new Set<string>();
+  for (let t = now; t <= now + (maxMin + 60) * 60000; t += 12 * 3600e3) { const p = jstParts(t); months.add(ym(p.y, p.m)); }
+  const end = jstParts(now + (maxMin + 60) * 60000); months.add(ym(end.y, end.m));
+  const { data: pubs } = await sb.from("shift_published").select("month,days").in("month", [...months]);
+  let sent = 0;
+  for (const st of staff) {
+    for (const pub of pubs ?? []) {
+      for (const [d, list] of Object.entries((pub.days ?? {}) as Record<string, any[]>)) {
+        const mine = list.filter((x) => x.uid === st.id).sort((a, b) => a.s.localeCompare(b.s));
+        if (!mine.length) continue;
+        const [hh, mm] = mine[0].s.split(":").map(Number);
+        const date = `${pub.month}-${String(d).padStart(2, "0")}`;
+        const startMs = Date.parse(`${date}T00:00:00+09:00`) + (hh * 60 + mm) * 60000;
+        const notifyAt = startMs - st.remind_min * 60000;
+        if (!(notifyAt <= now && notifyAt > now - 10 * 60000 && startMs > now)) continue;
+        if (!(await claimAlert("remind", st.id, `${date} ${mine[0].s}`))) continue;
+        const p = jstParts(Date.parse(`${date}T12:00:00+09:00`));
+        const text = `【やまびこシフト】出勤予定のお知らせ\n${p.m}/${p.d}(${WD[p.wd]})\n` +
+          mine.map((x) => `${storeMark(x.store)}${x.store} ${lab(x.s)}〜${lab(x.e)}`).join("\n") +
+          `\n\nシフト表はこちら👇\n${APP_URL}`;
+        const r = await linePush([st.id], text);
+        await sb.from("shift_alerts").update({ result: r }).eq("kind", "remind").eq("staff_id", st.id).eq("ref", `${date} ${mine[0].s}`);
+        sent++;
+      }
+    }
+  }
+  return { reminders: sent };
+}
+async function runLateAlerts(now: number) {
+  const { data: cfg } = await sb.from("shift_settings").select("kt_url,kt_key,owner_id").eq("id", 1).single();
+  if (!cfg?.kt_url) return { late: 0 };
+  const { rows } = await ktCall("noClockIn", { from: new Date(now - 20 * 60000).toISOString(), to: new Date(now - 60000).toISOString() });
+  if (!rows?.length) return { late: 0 };
+  const { data: staff } = await sb.from("shift_staff").select("id,name,nickname,kt_staff_id,is_manager");
+  const byKt = new Map((staff ?? []).filter((s) => s.kt_staff_id).map((s) => [s.kt_staff_id, s]));
+  const admins = new Set<string>([...(staff ?? []).filter((s) => s.is_manager).map((s) => s.id), ...(cfg.owner_id ? [cfg.owner_id] : [])]);
+  const lines: string[] = [];
+  for (const r of rows) {
+    const st = byKt.get(r.kotani_staff_id); if (!st) continue;
+    const startJ = new Date(Date.parse(r.start_at) + 9 * 3600e3).toISOString().slice(11, 16);
+    if (!(await claimAlert("late", st.id, `${r.work_date} ${startJ}`))) continue;
+    const store = r.store_name === "梅田" ? "嬉野" : r.store_name;
+    const res = await linePush([st.id], `【やまびこシフト】${startJ}からの${store}の出勤打刻が、まだ確認できません。\n出勤している場合は、勤怠システムで「出勤」を押してください。`);
+    await sb.from("shift_alerts").update({ result: res }).eq("kind", "late").eq("staff_id", st.id).eq("ref", `${r.work_date} ${startJ}`);
+    lines.push(`・${st.nickname || st.name}（${storeMark(store)}${store} ${startJ}〜）`);
+  }
+  if (lines.length && admins.size) await linePush([...admins], `【遅刻アラート】出勤時刻を過ぎても、出勤の打刻がありません\n${lines.join("\n")}`);
+  return { late: lines.length };
+}
+
 function background(p: Promise<unknown>) {
   const safe = p.catch((e) => console.error("background", e));
   const rt = (globalThis as any).EdgeRuntime;
@@ -170,6 +234,16 @@ Deno.serve(async (req) => {
       const s0 = await sb.from("shift_settings").select("cron_key").eq("id", 1).single();
       if (!body.cronKey || body.cronKey !== s0.data?.cron_key) throw new HttpError(403, "forbidden");
       return json(await runRemind(nextMonthJst()));
+    }
+    if (action === "cronTick") {
+      const s0 = await sb.from("shift_settings").select("cron_key").eq("id", 1).single();
+      if (!body.cronKey || body.cronKey !== s0.data?.cron_key) throw new HttpError(403, "forbidden");
+      if (!MSG_TOKEN) return json({ error: "no_token" });
+      const now = Date.now();
+      const out: Record<string, unknown> = {};
+      try { Object.assign(out, await runReminders(now)); } catch (e) { console.error("reminders", e); out.remindError = true; }
+      try { Object.assign(out, await runLateAlerts(now)); } catch (e) { console.error("late", e); out.lateError = true; }
+      return json(out);
     }
     if (typeof idToken !== "string" || !idToken) throw new HttpError(401, "no_token");
     const user = await verifyIdToken(idToken);
@@ -360,6 +434,14 @@ Deno.serve(async (req) => {
         return json({ rule: kt.rule, staff: (kt.staff ?? []).map((k: any) => ({ ...k, uid: byKt.get(k.id) ?? null })) });
       }
 
+      case "setRemind": {
+        const min = body.min == null ? null : Number(body.min);
+        if (min !== null && ![30, 60, 120, 180, 360, 720, 1440].includes(min)) throw new HttpError(400, "bad_min");
+        const { error } = await sb.from("shift_staff").upsert({ id: uid, name: meRow?.name || user.name, remind_min: min }, { onConflict: "id" });
+        if (error) throw error;
+        return json({ ok: true, remindMin: min });
+      }
+
       case "testRemind": {
         if (!isOwner) throw new HttpError(403, "forbidden");
         const result = await linePush([uid], "【やまびこシフト】テスト送信です。\nこのメッセージが届いていれば、毎月21日0時の自動リマインドが届きます。\n" + APP_URL);
@@ -369,7 +451,16 @@ Deno.serve(async (req) => {
       case "reminders": {
         needAdmin();
         const { data } = await sb.from("shift_reminders").select("month,sent_at,recipients,result").order("month", { ascending: false }).limit(6);
-        return json({ reminders: (data ?? []).map((r) => ({ month: r.month, sentAt: r.sent_at, count: (r.recipients as unknown[]).length, ok: r.result === "ok" || r.result === "none" })), hasToken: !!MSG_TOKEN, next: upcomingRemindMonth() });
+        let quota: unknown = null;
+        if (MSG_TOKEN) {
+          try {
+            const h = { Authorization: `Bearer ${MSG_TOKEN}` };
+            const [q, c] = await Promise.all([fetch("https://api.line.me/v2/bot/message/quota", { headers: h }).then((r) => r.json()), fetch("https://api.line.me/v2/bot/message/quota/consumption", { headers: h }).then((r) => r.json())]);
+            quota = { limit: q.type === "limited" ? q.value : null, used: c.totalUsage ?? null };
+          } catch { /* 取得できなくても続ける */ }
+        }
+        const { count: remindUsers } = await sb.from("shift_staff").select("id", { count: "exact", head: true }).not("remind_min", "is", null);
+        return json({ reminders: (data ?? []).map((r) => ({ month: r.month, sentAt: r.sent_at, count: (r.recipients as unknown[]).length, ok: r.result === "ok" || r.result === "none" })), hasToken: !!MSG_TOKEN, next: upcomingRemindMonth(), quota, remindUsers: remindUsers ?? 0 });
       }
 
       case "setManager": {

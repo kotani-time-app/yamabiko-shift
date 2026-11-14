@@ -222,6 +222,15 @@ details.sd summary::-webkit-details-marker{display:none}
       <button id="pNext" aria-label="次の月">›</button>
     </div>
     <div id="pBody"></div>
+    <div class="card" id="remindCard">
+      <h2>出勤リマインダー</h2>
+      <div class="muted" style="margin-bottom:8px">出勤時刻の前に、LINEで出勤予定をお知らせします（公開されたシフトが対象）。LINE公式アカウント「やまびこシフト」を友だち追加している必要があります。</div>
+      <select id="remindSel">
+        <option value="">オフ（お知らせしない）</option>
+        <option value="30">30分前</option><option value="60">1時間前</option><option value="120">2時間前</option>
+        <option value="180">3時間前</option><option value="360">6時間前</option><option value="720">12時間前</option><option value="1440">前日（24時間前）</option>
+      </select>
+    </div>
   </section>
 
   <!-- シフト作成（店長） -->
@@ -286,8 +295,8 @@ details.sd summary::-webkit-details-marker{display:none}
       <div id="mgrList"></div>
     </div>
     <div class="card owneronly hide">
-      <h2>未提出者への自動LINE</h2>
-      <div class="muted" style="margin-bottom:8px">毎月21日0時に、翌月のシフト希望を提出していないスタッフへ、LINE公式アカウントから個別にお知らせを送ります（公式アカウントを友だち追加している人のみ）。</div>
+      <h2>LINEのお知らせ（自動）</h2>
+      <div class="muted" style="margin-bottom:8px">・毎月21日0時：翌月のシフト希望が未提出のスタッフへお知らせ<br>・出勤リマインダー：オンにしたスタッフへ、出勤前にお知らせ<br>・遅刻アラート：出勤時刻を過ぎても勤怠システムで出勤の打刻がないとき、本人・オーナー・シフト作成を許可した人へお知らせ（勤怠と紐付け済みのスタッフのみ）<br>いずれも公式アカウントを友だち追加している人だけに届きます。無料プランは月200通までです。</div>
       <div id="remindState" class="muted" style="margin-bottom:8px">読み込み中…</div>
       <button class="btn" id="testRemind" style="width:100%">自分にテスト送信する</button>
     </div>
@@ -323,7 +332,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-14b</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-14c</div>
   </section>
 </main>
 
@@ -855,7 +864,14 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#pPrev').onclick=()=>{S.pubMonth=shift(S.pubMonth,-1);renderPub();loadPub(S.pubMonth);};
   $('#pNext').onclick=()=>{S.pubMonth=shift(S.pubMonth,1);renderPub();loadPub(S.pubMonth);};
   $('#pBody').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.pubStore=b.dataset.s;renderPub();});
+  function renderRemind(){ const v=S.mine?.remindMin; if(document.activeElement!==$('#remindSel')) $('#remindSel').value = v?String(v):''; }
+  $('#remindSel').addEventListener('change',async e=>{
+    const v=e.target.value; const min=v?Number(v):null;
+    try{ const r=await api('setRemind',{min}); S.mine={...(S.mine||{months:{}}),remindMin:r.remindMin}; toast(min?`${e.target.selectedOptions[0].text}にお知らせします`:'リマインダーをオフにしました'); }
+    catch{ toast('保存できませんでした'); renderRemind(); }
+  });
   function renderPub(){
+    renderRemind();
     const m=S.pubMonth, pub=S.pub[m], n=daysIn(m);
     $('#pLabel').textContent=mLabel(m);
     $('#pState').innerHTML = pub?`<span class="badge ok">公開 ${new Date(pub.publishedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`:'';
@@ -920,8 +936,10 @@ details.sd summary::-webkit-details-marker{display:none}
     try{
       const r=await api('reminders');
       const hist=r.reminders.length?r.reminders.map(x=>`${mNum(x.month)}月分：${new Date(x.sentAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} に ${x.count}人へ送信${x.ok?'':'（一部失敗）'}`).join('<br>'):'送信履歴はまだありません';
-      $('#remindState').innerHTML = (r.hasToken?'<span class="badge ok">設定済み</span>':'<span class="badge warn">送信用の鍵が未設定</span>')
-        + `<div style="margin-top:6px">次回：${mNum(r.next)}月分を ${(()=>{const [y,m]=r.next.split('-').map(Number);const d=new Date(y,m-2,21);return `${d.getMonth()+1}/21 0:00`;})()} に送信</div><div style="margin-top:6px">${hist}</div>`;
+      const q=r.quota; const qline = q&&q.used!=null ? `<div style="margin-top:6px">今月のLINE送信数：<b>${q.used}</b>${q.limit?` / ${q.limit}通`:'通'}${q.limit&&q.used>=q.limit*0.8?' <span class="badge lock">上限が近いです</span>':''}</div>` : '';
+      $('#remindState').innerHTML = (r.hasToken?'<span class="badge ok">設定済み</span>':'<span class="badge warn">送信用の鍵が未設定</span>') + qline
+        + `<div style="margin-top:6px">出勤リマインダーをオンにしている人：${r.remindUsers}人</div>`
+        + `<div style="margin-top:6px">未提出者へのお知らせ 次回：${mNum(r.next)}月分を ${(()=>{const [y,m]=r.next.split('-').map(Number);const d=new Date(y,m-2,21);return `${d.getMonth()+1}/21 0:00`;})()} に送信</div><div style="margin-top:6px">${hist}</div>`;
     }catch{ $('#remindState').textContent='状態を読み込めませんでした'; }
   }
   $('#testRemind').onclick=async()=>{
