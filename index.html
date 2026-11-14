@@ -670,7 +670,7 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#staffList').innerHTML = mine.length ? mine.map(p=>{ const md=p.months?.[m];
       const mini = personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft');
       const late = md?.firstSubmittedAt && new Date(md.firstSubmittedAt) > deadlineDate(m);
-      return `<details class="sd"><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}</div>
+      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}</div>
       ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}</details>`; }).join('')
       : '<div class="empty">まだ誰も登録していません。「LINEで希望提出をお願いする」からスタッフに送ってください。</div>';
     // LINE（希望依頼）
@@ -773,6 +773,9 @@ details.sd summary::-webkit-details-marker{display:none}
         + (unlinked?`<div class="muted" style="margin-top:6px">※シフト未連携の${unlinked}人は遅刻を判定できません</div>`:'');
   }
   $('#lateReload').onclick=()=>loadLateness(true);
+  // 開いたスタッフのカレンダーは、自動更新で描き直しても開いたままにする
+  S.openStaff=new Set();
+  $('#staffList').addEventListener('toggle',e=>{ const d=e.target.closest('[data-sd]'); if(!d) return; d.open?S.openStaff.add(d.dataset.sd):S.openStaff.delete(d.dataset.sd); },true);
 
   async function loadKt(){
     if(!S.admin) return;
