@@ -334,7 +334,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-17a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-17b</div>
   </section>
 </main>
 
@@ -628,6 +628,7 @@ details.sd summary::-webkit-details-marker{display:none}
     });
   }
   function people(){ return S.all.map(r=>({id:r.id,...r.data})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja')); }
+  function editorName(id){ const e=S.all.find(x=>x.id===id); return e?nick({id,...e.data}):'店長'; }
   function nick(p){ return (S.settings.nicknames||{})[p.id] || p.name || '?'; }
   function homeStores(p,m){ const cur=S.settings.stores||[]; return (p.stores || p.months?.[m]?.stores || []).filter(s=>cur.includes(s)).slice(0,1); }
   function assignOf(m,d,uid){ return S.sched[m]?.days?.[d]?.[uid] ?? null; }
@@ -711,7 +712,7 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#staffList').innerHTML = mine.length ? mine.map(p=>{ const md=p.months?.[m];
       const mini = personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft');
       const late = md?.firstSubmittedAt && new Date(md.firstSubmittedAt) > deadlineDate(m);
-      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ 店長が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に編集</div>`:''}</div>
+      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に編集</div>`:''}</div>
       ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}<button class="btn small" data-proxy="${esc(p.id)}" style="margin:2px 0 10px">✎ ${md?'この人の希望を編集する':'この人の希望を代わりに入力する'}</button></details>`; }).join('')
       : '<div class="empty">まだ誰も登録していません。「LINEで希望提出をお願いする」からスタッフに送ってください。</div>';
     // LINE（希望依頼）
