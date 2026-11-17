@@ -186,9 +186,14 @@ details.sd summary::-webkit-details-marker{display:none}
       <div style="text-align:center"><div class="m" id="mLabel"></div><div id="mState"></div></div>
       <button id="mNext" aria-label="次の月">›</button>
     </div>
+    <div class="notice hide" id="proxyBar" style="background:#f6f1fc;border-left:4px solid #7b4fc0">
+      <b>店長として <span id="proxyName"></span> さんの希望を編集中</b>
+      <div class="muted" style="margin:4px 0 8px">保存すると本人の希望が書き換わります（締切後・受付停止中でも変更できます）。</div>
+      <button class="btn small" id="proxyEnd">‹ シフト作成に戻る</button>
+    </div>
     <div class="notice" id="ruleNote"></div>
     <div class="card">
-      <h2>あなたの情報</h2>
+      <h2 id="infoTitle">あなたの情報</h2>
       <label class="f" for="myName">名前</label>
       <input type="text" id="myName" placeholder="例：山田 花子" maxlength="30">
       <label class="f">所属店舗（1つ選択・次回以降も記憶されます）</label>
@@ -329,7 +334,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-14d</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-17a</div>
   </section>
 </main>
 
@@ -422,6 +427,7 @@ details.sd summary::-webkit-details-marker{display:none}
   // ---------- views ----------
   $('#nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; setView(b.dataset.v); });
   function setView(v){
+    if(v!=='submit' && S.proxy) endProxy();
     S.view=v; $$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
     ['submit','shift','list','settings'].forEach(x=>$('#v-'+x).classList.toggle('hide',x!==v));
     $('#saveBar').classList.toggle('hide',v!=='submit' || !S.ready);
@@ -438,17 +444,21 @@ details.sd summary::-webkit-details-marker{display:none}
   }
 
   // ---------- 希望を出す ----------
+  // 店長がスタッフの希望を代わりに編集しているときは、そのスタッフのデータを対象にする
+  function subj(){ if(S.proxy){ const p=S.all.find(x=>x.id===S.proxy.uid); return p?p.data:null; } return S.mine; }
   function loadDraft(){
-    const md = S.mine?.months?.[S.month];
+    const me=subj();
+    const md = me?.months?.[S.month];
     S.draft = md ? JSON.parse(JSON.stringify(md)) : { days:{}, note:'' };
-    S.draft.stores = (S.mine?.stores || md?.stores || []).filter(s=>(S.settings.stores||[]).includes(s)).slice(0,1);
-    S.draft.name = S.mine?.name || '';
-    S.draft.defTime = md?.defTime || S.mine?.defTime || null;
+    S.draft.stores = (me?.stores || md?.stores || []).filter(s=>(S.settings.stores||[]).includes(s)).slice(0,1);
+    S.draft.name = me?.name || '';
+    S.draft.defTime = md?.defTime || me?.defTime || null;
     S.dirty=false;
   }
   function fallbackTime(){ const ts=times(); return `${ts[Math.floor(ts.length*0.5)]||ts[0]}-${ts[ts.length-1]}`; }
   function defTime(){ const v=S.draft.defTime; const ts=times(); if(v){const[a,b]=v.split('-'); if(ts.includes(a)&&ts.includes(b)) return v;} return fallbackTime(); }
   function monthEditState(m){
+    if(S.proxy) return {can:true, proxy:true, why:'店長として編集中です。締切や受付停止に関係なく変更できます。'};
     const md=S.mine?.months?.[m]; const sub=!!md?.submittedAt; const past=pastDeadline(m);
     if(locked(m)) return {can:false, why:'この月の受付は終了しました。'};
     if(sub && past) return {can:false, why:`締切（${deadlineLabel(m)}）を過ぎたため、提出済みの希望は変更できません。変更が必要な場合は店長に連絡してください。`};
@@ -458,7 +468,11 @@ details.sd summary::-webkit-details-marker{display:none}
   }
   function renderSubmit(){
     if(!S.draft) loadDraft();
-    const m=S.month, md=S.mine?.months?.[m], st=monthEditState(m);
+    const m=S.month, md=subj()?.months?.[m], st=monthEditState(m);
+    $('#proxyBar').classList.toggle('hide',!S.proxy);
+    if(S.proxy) $('#proxyName').textContent=S.proxy.label;
+    $('#infoTitle').textContent=S.proxy?'スタッフの情報':'あなたの情報';
+    $('#mPrev').style.visibility=$('#mNext').style.visibility=S.proxy?'hidden':'';
     $('#mLabel').textContent=mLabel(m);
     $('#mState').innerHTML = locked(m) ? '<span class="badge lock">受付終了</span>'
       : md?.submittedAt ? `<span class="badge ok">提出済み ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`
@@ -468,6 +482,7 @@ details.sd summary::-webkit-details-marker{display:none}
     if(document.activeElement!==$('#myName')) $('#myName').value = S.draft.name || '';
     if(document.activeElement!==$('#myNote')) $('#myNote').value = S.draft.note || '';
     $('#myName').disabled=$('#myNote').disabled=dis;
+    if(S.proxy) $('#myName').disabled=true;
     $('#myStores').innerHTML = (S.settings.stores||[]).map(s=>storeChip(s,s,S.draft.stores.includes(s),dis?'disabled':'')).join('');
     const ts=times(); const n=daysIn(m); let h='';
     for(let d=1; d<=n; d++){
@@ -494,7 +509,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const filled=Object.keys(S.draft.days).length;
     $('#saveInfo').textContent = !S.canWrite ? '閲覧のみの権限です' : !st.can ? '変更できません' : `${filled}/${n}日 入力済み${S.dirty?'・未保存':''}${st.late?'・提出後は変更不可':''}`;
     $('#saveBtn').disabled = dis;
-    $('#saveBtn').textContent = S.confirmLate ? 'もう一度押して確定' : md?.submittedAt ? '変更を保存' : '提出する';
+    $('#saveBtn').textContent = S.proxy ? (md?.submittedAt?'店長として変更を保存':'店長として代わりに提出') : S.confirmLate ? 'もう一度押して確定' : md?.submittedAt ? '変更を保存' : '提出する';
   }
   $('#myStores').addEventListener('click',e=>{ const b=e.target.closest('.chip'); if(!b)return;
     S.draft.stores=[b.dataset.s]; S.dirty=true; renderSubmit(); });
@@ -527,6 +542,16 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#myNote').addEventListener('input',e=>{ S.draft.note=e.target.value; S.dirty=true; });
   $('#myName').addEventListener('input',e=>{ S.draft.name=e.target.value; S.dirty=true; });
   $('#mPrev').onclick=()=>changeMonth(-1); $('#mNext').onclick=()=>changeMonth(1);
+  function startProxy(uid){
+    const p=S.all.find(x=>x.id===uid); if(!p) return;
+    S.proxy={uid, label:nick({id:uid,...p.data}), back:S.month};
+    S.month=S.listMonth; S.dirty=false; loadDraft(); setView('submit'); window.scrollTo(0,0);
+  }
+  function endProxy(){
+    if(!S.proxy) return;
+    S.month=S.proxy.back; S.proxy=null; S.dirty=false; loadDraft();
+  }
+  $('#proxyEnd').onclick=()=>{ if(S.dirty && !endProxy._w){ endProxy._w=true; toast('未保存の変更があります。もう一度押すと破棄して戻ります'); return; } endProxy._w=false; endProxy(); setView('list'); };
   function changeMonth(n){
     if(S.dirty && !changeMonth._warned){ changeMonth._warned=true; toast('未保存の変更があります。もう一度押すと破棄して移動します'); return; }
     changeMonth._warned=false; S.confirmLate=false; S.month=shift(S.month,n); loadDraft(); renderSubmit(); }
@@ -540,6 +565,15 @@ details.sd summary::-webkit-details-marker{display:none}
     if(st.late && !S.confirmLate){ S.confirmLate=true; toast('締切後の提出は、提出後に変更できません'); renderSubmit(); return; }
     S.confirmLate=false;
     $('#saveBtn').disabled=true;
+    if(S.proxy){
+      const uid=S.proxy.uid;
+      try{
+        const r=await api('saveRequestFor',{uid, month:S.month, store:S.draft.stores[0], defTime:S.draft.defTime||null, days:{...S.draft.days}, note:S.draft.note||''});
+        const p=S.all.find(x=>x.id===uid); if(p) p.data=r.staff;
+        S.dirty=false; loadDraft(); toast(`${S.proxy.label}さんの${mLabel(S.month)}の希望を保存しました`);
+      }catch(err){ toast(err.code==='forbidden'?'編集する権限がありません':'保存できませんでした。通信状況を確認してもう一度お試しください'); }
+      renderSubmit(); return;
+    }
     const prev=S.mine?.months?.[S.month];
     try{
       const r=await api('saveRequest',{month:S.month, name, store:S.draft.stores[0], defTime:S.draft.defTime||null, days:{...S.draft.days}, note:S.draft.note||''});
@@ -677,8 +711,8 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#staffList').innerHTML = mine.length ? mine.map(p=>{ const md=p.months?.[m];
       const mini = personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft');
       const late = md?.firstSubmittedAt && new Date(md.firstSubmittedAt) > deadlineDate(m);
-      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}</div>
-      ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}</details>`; }).join('')
+      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ 店長が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に編集</div>`:''}</div>
+      ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}<button class="btn small" data-proxy="${esc(p.id)}" style="margin:2px 0 10px">✎ ${md?'この人の希望を編集する':'この人の希望を代わりに入力する'}</button></details>`; }).join('')
       : '<div class="empty">まだ誰も登録していません。「LINEで希望提出をお願いする」からスタッフに送ってください。</div>';
     // LINE（希望依頼）
     $('#lineAsk').href=lineUrl(`【シフト希望のお願い】\n${S.storeFilter==='all'?'':S.storeFilter+'の'}${mNum(m)}月のシフト希望を ${deadlineLabel(m)} までに提出してください🙏\n${PAGE_URL}`);
@@ -782,6 +816,7 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#lateReload').onclick=()=>loadLateness(true);
   // 開いたスタッフのカレンダーは、自動更新で描き直しても開いたままにする
   S.openStaff=new Set();
+  $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); } });
   $('#staffList').addEventListener('toggle',e=>{ const d=e.target.closest('[data-sd]'); if(!d) return; d.open?S.openStaff.add(d.dataset.sd):S.openStaff.delete(d.dataset.sd); },true);
 
   async function loadKt(){

@@ -434,6 +434,30 @@ Deno.serve(async (req) => {
         return json({ rule: kt.rule, staff: (kt.staff ?? []).map((k: any) => ({ ...k, uid: byKt.get(k.id) ?? null })) });
       }
 
+      case "saveRequestFor": {
+        // 店長がスタッフの希望を代わりに入力・変更する（締切・受付停止に関係なく可能）
+        needAdmin(); needMonth();
+        const target = String(body.uid ?? "");
+        const { data: st } = await sb.from("shift_staff").select("*").eq("id", target).maybeSingle();
+        if (!st) throw new HttpError(404, "no_staff");
+        const stores = (settings.data.stores as string[]) ?? [];
+        const store = stores.includes(String(body.store ?? "")) ? String(body.store) : st.store;
+        const { data: prev } = await sb.from("shift_requests").select("*").eq("staff_id", target).eq("month", month).maybeSingle();
+        const defTime = typeof body.defTime === "string" && /^\d{2}:\d{2}-\d{2}:\d{2}$/.test(body.defTime) ? body.defTime : (prev?.data?.defTime ?? null);
+        const now = new Date().toISOString();
+        if (store && store !== st.store) await sb.from("shift_staff").update({ store, updated_at: now }).eq("id", target);
+        const data = { days: cleanDays(body.days), note: String(body.note ?? "").slice(0, 400), stores: store ? [store] : [], defTime, editedBy: uid, editedAt: now };
+        const { error } = await sb.from("shift_requests").upsert({
+          staff_id: target, month, data, submitted_at: prev?.submitted_at ?? now, first_submitted_at: prev?.first_submitted_at ?? now,
+        }, { onConflict: "staff_id,month" });
+        if (error) throw error;
+        const [{ data: st2 }, { data: reqs }] = await Promise.all([
+          sb.from("shift_staff").select("*").eq("id", target).single(),
+          sb.from("shift_requests").select("*").eq("staff_id", target).eq("month", month),
+        ]);
+        return json({ ok: true, staff: staffShape(st2, reqs ?? [], true) });
+      }
+
       case "setRemindFor": {
         needAdmin();
         const min = body.min == null ? null : Number(body.min);
