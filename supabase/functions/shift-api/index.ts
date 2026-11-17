@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
       case "published": {
         needMonth();
         const { data } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
-        return json({ published: data ? { days: data.days, offs: data.offs, publishedAt: data.published_at } : null, settings: await publicSettings(settings) });
+        return json({ published: data ? { days: data.days, offs: data.offs, changes: data.changes ?? {}, publishedAt: data.published_at } : null, settings: await publicSettings(settings) });
       }
 
       case "adminData": {
@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
         return json({
           all,
           schedule: sched ? { days: sched.days, updatedAt: sched.updated_at } : { days: {} },
-          published: pub ? { days: pub.days, offs: pub.offs, publishedAt: pub.published_at } : null,
+          published: pub ? { days: pub.days, offs: pub.offs, changes: pub.changes ?? {}, publishedAt: pub.published_at } : null,
           settings: await publicSettings(settings),
         });
       }
@@ -342,6 +342,10 @@ Deno.serve(async (req) => {
         }
         const { error } = await sb.rpc("shift_set_assign", { p_month: month, p_day: String(day), p_uid: target, p_val: val });
         if (error) throw error;
+        const { data: pubRow } = await sb.from("shift_published").select("month").eq("month", month).maybeSingle();
+        if (pubRow) {   // 公開後の変更は、誰がいつ変えたかを残す
+          await sb.rpc("shift_mark_change", { p_month: month, p_day: String(day), p_uid: target, p_info: { by: uid, name: meRow?.nickname || meRow?.name || "店長", at: new Date().toISOString() } });
+        }
         background(syncStarts(month));
         return json({ ok: true, updatedAt: new Date().toISOString() });
       }
@@ -367,10 +371,11 @@ Deno.serve(async (req) => {
           if (list.length) days[d] = list;
         }
         const now = new Date().toISOString();
-        const { error } = await sb.from("shift_published").upsert({ month, days, offs, published_at: now }, { onConflict: "month" });
+        const changes = (sched?.changes ?? {}) as Record<string, unknown>;
+        const { error } = await sb.from("shift_published").upsert({ month, days, offs, changes, published_at: now }, { onConflict: "month" });
         if (error) throw error;
         background(syncStarts(month));
-        return json({ ok: true, published: { days, offs, publishedAt: now } });
+        return json({ ok: true, published: { days, offs, changes, publishedAt: now } });
       }
 
       case "saveSettings": {
@@ -446,7 +451,7 @@ Deno.serve(async (req) => {
         const defTime = typeof body.defTime === "string" && /^\d{2}:\d{2}-\d{2}:\d{2}$/.test(body.defTime) ? body.defTime : (prev?.data?.defTime ?? null);
         const now = new Date().toISOString();
         if (store && store !== st.store) await sb.from("shift_staff").update({ store, updated_at: now }).eq("id", target);
-        const data = { days: cleanDays(body.days), note: String(body.note ?? "").slice(0, 400), stores: store ? [store] : [], defTime, editedBy: uid, editedAt: now };
+        const data = { days: cleanDays(body.days), note: String(body.note ?? "").slice(0, 400), stores: store ? [store] : [], defTime, editedBy: uid, editedByName: meRow?.nickname || meRow?.name || "店長", editedAt: now };
         const { error } = await sb.from("shift_requests").upsert({
           staff_id: target, month, data, submitted_at: prev?.submitted_at ?? now, first_submitted_at: prev?.first_submitted_at ?? now,
         }, { onConflict: "staff_id,month" });

@@ -99,6 +99,10 @@ textarea{min-height:70px;resize:vertical}
 .pcd.work{background:#f3faf6;border-color:#cfe7da}
 .pcd .st{font-weight:700;white-space:nowrap;overflow:hidden;display:block}
 .pcd .tm{display:block;word-break:break-all;font-size:9.5px}
+.pcd.changed{border-color:#7b4fc0;box-shadow:inset 0 0 0 1px #7b4fc0}
+.pcd .chg{color:#7b4fc0;font-style:normal;font-size:10px;margin-left:2px}
+.chgbox{margin-top:10px;background:#f6f1fc;border-radius:8px;padding:8px 10px;font-size:13px;color:#5a3d8a}
+.chgbox ul{margin:4px 0 0;padding-left:18px}
 .pcd .tbd{color:#8a5a00;background:#fff3d6;border-radius:4px;padding:0 3px;font-weight:700;display:inline-block;font-size:10px}
 .pcd .rest{color:var(--sub);font-weight:700;display:block}
 .pcd .ghost{color:#b9aea6;display:block;word-break:break-all;font-size:9.5px}
@@ -191,6 +195,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin:4px 0 8px">保存すると本人の希望が書き換わります（締切後・受付停止中でも変更できます）。</div>
       <button class="btn small" id="proxyEnd">‹ シフト作成に戻る</button>
     </div>
+    <div class="notice hide" id="editNote" style="background:#f6f1fc;color:#5a3d8a"></div>
     <div class="notice" id="ruleNote"></div>
     <div class="card">
       <h2 id="infoTitle">あなたの情報</h2>
@@ -334,7 +339,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-17b</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-18a</div>
   </section>
 </main>
 
@@ -403,7 +408,7 @@ details.sd summary::-webkit-details-marker{display:none}
     return `<button class="chip ${on?'on':''}" data-s="${esc(v)}" ${extra} ${isStore?`style="--sc:${storeColor(v)}"`:''}>${esc(l)}</button>`; }
   function shortStore(s){ return s.length<=3 ? s : s.slice(-2); }
   // スタッフ1人分の月カレンダー。mode: 'final'（公開済み）/'draft'（作成中）
-  function personCal(m, segFn, wishFn, offFn, mode){
+  function personCal(m, segFn, wishFn, offFn, mode, changeFn){
     const n=daysIn(m); let h='<div class="pc">'+WD.map((w,i)=>`<div class="wh ${i===6?'sat':i===0?'sun':''}">${w}</div>`).join('')+'<div></div>'.repeat(wd(m,1));
     let days=0, mins=0;
     for(let d=1; d<=n; d++){
@@ -415,12 +420,13 @@ details.sd summary::-webkit-details-marker{display:none}
       else if(offFn(d)) inner=`<span class="rest">休</span>${ghost}`;
       else if(mode==='final') inner=`<span class="tbd">未定</span>${ghost}`;
       else inner = ghost || (k==='off'?'<span class="rest" style="color:var(--off)">×</span>':'');
-      h+=`<div class="pcd ${segs.length?'work':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}</b>${inner}</div>`;
+      const ch=changeFn?changeFn(d):null;
+      h+=`<div class="pcd ${segs.length?'work':''} ${ch?'changed':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}${ch?'<i class="chg">✎</i>':''}</b>${inner}</div>`;
     }
     h+='</div>';
     const hrs=Math.round(mins/60*100)/100;
     return h+`<div class="pcsum">出勤 ${days}日・計 ${hrs}時間</div>
-      <div class="pclegend">${(S.settings.stores||[]).map(s=>`<span style="color:${storeColor(s)}">■${esc(shortStore(s))}＝${esc(s)}</span>`).join('')}<span>休＝休み</span>${mode==='final'?'<span>未定＝まだ決まっていない</span>':''}<span style="color:#b9aea6">薄字＝出していた希望</span></div>`;
+      <div class="pclegend">${(S.settings.stores||[]).map(s=>`<span style="color:${storeColor(s)}">■${esc(shortStore(s))}＝${esc(s)}</span>`).join('')}<span>休＝休み</span>${mode==='final'?'<span>未定＝まだ決まっていない</span><span style="color:#7b4fc0">✎＝公開後に変更</span>':''}<span style="color:#b9aea6">薄字＝出していた希望</span></div>`;
   }
   function lineUrl(t){ return 'https://line.me/R/share?text='+encodeURIComponent(t); }
 
@@ -477,6 +483,8 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#mState').innerHTML = locked(m) ? '<span class="badge lock">受付終了</span>'
       : md?.submittedAt ? `<span class="badge ok">提出済み ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`
       : `<span class="badge ${pastDeadline(m)?'warn':''}">未提出・${deadlineLabel(m)}締切</span>`;
+    $('#editNote').classList.toggle('hide',!md?.editedAt);
+    if(md?.editedAt) $('#editNote').textContent=`✎ ${md.editedByName||editorName(md.editedBy)}が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}にこの希望を編集しました`;
     $('#ruleNote').textContent = st.why; $('#ruleNote').className = 'notice' + (st.can && !st.late ? ' ok' : '');
     const dis = !st.can || !S.canWrite;
     if(document.activeElement!==$('#myName')) $('#myName').value = S.draft.name || '';
@@ -924,7 +932,10 @@ details.sd summary::-webkit-details-marker{display:none}
     const chips=[['mine','自分のシフト'],...stores.map(s=>[s,s])].map(([v,l])=>storeChip(v,l,S.pubStore===v)).join('');
     if(S.pubStore==='mine'){
       const md=S.mine?.months?.[m];
-      const cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], d=>(pub.offs?.[d]||[]).includes(S.uid), 'final');
+      const chg=d=>pub.changes?.[d]?.[S.uid]||null;
+      let cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], d=>(pub.offs?.[d]||[]).includes(S.uid), 'final', chg);
+      const chList=[]; for(let d=1;d<=n;d++){ const c=chg(d); if(c) chList.push(`<li>${dateLabel(m,d)}：${esc(c.name||'店長')}が${new Date(c.at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に変更</li>`); }
+      if(chList.length) cal+=`<div class="chgbox"><b>✎ 公開後に変更があった日</b><ul>${chList.join('')}</ul></div>`;
       $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card" style="padding:10px">${cal}</div>`;
       return;
     }
