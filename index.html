@@ -119,6 +119,8 @@ textarea{min-height:70px;resize:vertical}
 .person:last-child{border:0}
 .person .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .person .nm{font-weight:700}
+.pcd[data-pd]{cursor:pointer}
+.pcd[data-pd]:active{outline:2px solid var(--accent,#c8553d)}
 .nmtxt.tap{border-bottom:1px dashed currentColor;cursor:pointer}
 #staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
 #staffDlg::backdrop{background:rgba(30,20,15,.5)}
@@ -345,7 +347,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20b</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20c</div>
   </section>
 </main>
 
@@ -427,7 +429,7 @@ details.sd summary::-webkit-details-marker{display:none}
       else if(mode==='final') inner=`<span class="tbd">未定</span>${ghost}`;
       else inner = ghost || (k==='off'?'<span class="rest" style="color:var(--off)">×</span>':'');
       const ch=changeFn?changeFn(d):null;
-      h+=`<div class="pcd ${segs.length?'work':''} ${ch?'changed':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}${ch?'<i class="chg">✎</i>':''}</b>${inner}</div>`;
+      h+=`<div ${mode==='draft'?`data-pd="${d}"`:''} class="pcd ${segs.length?'work':''} ${ch?'changed':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}${ch?'<i class="chg">✎</i>':''}</b>${inner}</div>`;
     }
     h+='</div>';
     const hrs=Math.round(mins/60*100)/100;
@@ -834,7 +836,10 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#lateReload').onclick=()=>loadLateness(true);
   // 開いたスタッフのカレンダーは、自動更新で描き直しても開いたままにする
   S.openStaff=new Set();
-  $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); } });
+  // スタッフ別カレンダーの日付をタップ → その日の欄を開く
+  function gotoDay(d){ S.selDay=d; if($('#staffDlg').open) $('#staffDlg').close(); renderList(); $('#dayDetail').scrollIntoView({behavior:'smooth',block:'start'}); }
+  $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); return; }
+    const c=e.target.closest('[data-pd]'); if(c) gotoDay(Number(c.dataset.pd)); });
   // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
   function renderStaffDlg(){
     const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
@@ -852,7 +857,8 @@ details.sd summary::-webkit-details-marker{display:none}
   $('#staffDlg').addEventListener('click',e=>{
     const dlg=$('#staffDlg');
     if(e.target===dlg || e.target.closest('[data-close]')){ dlg.close(); return; }
-    const b=e.target.closest('[data-proxy]'); if(b){ dlg.close(); startProxy(b.dataset.proxy); }
+    const b=e.target.closest('[data-proxy]'); if(b){ dlg.close(); startProxy(b.dataset.proxy); return; }
+    const c=e.target.closest('[data-pd]'); if(c) gotoDay(Number(c.dataset.pd));
   });
   $('#staffList').addEventListener('toggle',e=>{ const d=e.target.closest('[data-sd]'); if(!d) return; d.open?S.openStaff.add(d.dataset.sd):S.openStaff.delete(d.dataset.sd); },true);
 
