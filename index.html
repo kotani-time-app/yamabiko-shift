@@ -119,6 +119,11 @@ textarea{min-height:70px;resize:vertical}
 .person:last-child{border:0}
 .person .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .person .nm{font-weight:700}
+.nmtxt.tap{border-bottom:1px dashed currentColor;cursor:pointer}
+#staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
+#staffDlg::backdrop{background:rgba(30,20,15,.5)}
+#staffDlg .dlghead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
+#staffDlg .dlgx{border:0;background:none;font-size:22px;line-height:1;padding:2px 6px;color:#6b625c}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .tag.any{background:var(--ok-soft);color:var(--ok)} .tag.time{background:var(--time-soft);color:var(--time)} .tag.off{background:var(--off-soft);color:var(--off)} .tag.none{background:#eee;color:var(--sub)}
 .dec{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
@@ -251,6 +256,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="storekey" id="storeKey"></div>
     </div>
     <div class="card daydetail" id="dayDetail"></div>
+    <dialog id="staffDlg"></dialog>
     <div class="card">
       <h2>スタッフ別シフト・提出状況 <span class="muted" id="subCount"></span></h2>
       <div class="muted" style="margin-bottom:4px">名前をタップすると、その人の1か月のシフトがカレンダーで見られます。</div>
@@ -339,7 +345,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20b</div>
   </section>
 </main>
 
@@ -670,6 +676,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const row=e.target.closest('.person'); if(!row) return;
     const uid=row.dataset.uid, m=S.listMonth, d=S.selDay, p=people().find(x=>x.id===uid);
     const act=e.target.closest('[data-act]')?.dataset.act; if(!act) return;
+    if(act==='cal'){ openStaffDlg(uid); return; }
     if(row.closest('#dayResults') && act==='work') S.daySearch='';
     const cur=assignOf(m,d,uid);
     if(act==='work'){ if(Array.isArray(cur)) setAssign(m,d,uid,null); else setAssign(m,d,uid,[defaultSeg(p,m,d)]); }
@@ -729,6 +736,7 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#lineRemind').href=lineUrl(`【シフト希望 提出のお願い】\n${mNum(m)}月のシフト希望がまだの方は提出をお願いします（締切 ${deadlineLabel(m)}）。\n${notyet.length?'未提出：'+notyet.join('、')+'\n':''}${PAGE_URL}`);
     $('#lineRemind').classList.toggle('hide', !notyet.length);
     renderLateness();
+    if($('#staffDlg').open) renderStaffDlg();
   }
 
   function personRow(p,m,d,searched){
@@ -744,7 +752,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const note = lock ? `<div class="busynote">${busy.map(g=>`${storeSpan(g.store)}で出勤 ${lab(g.s)}〜${lab(g.e)}`).join('・')}<br>所属店舗の出勤を調整すれば入れます（店長同士で相談）</div>`
                : (!home && a==='off') ? '<div class="busynote">所属店舗で「休み（外す）」に決定済み</div>' : '';
     return `<div class="person ${!home?'support':''} ${lock?'busy':''}" data-uid="${esc(p.id)}">
-      <div class="top"><span class="nm">${sp?'<span class="suptag">応援</span>':other?'<span class="suptag" style="background:#8a7f78">他店</span>':''}<span class="nmtxt">${esc(nick(p))}</span> <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
+      <div class="top"><span class="nm">${sp?'<span class="suptag">応援</span>':other?'<span class="suptag" style="background:#8a7f78">他店</span>':''}<span class="nmtxt tap" data-act="cal">${esc(nick(p))}</span> <span style="font-weight:400;font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span></span>${tag}</div>
       ${note}
       ${lock?'':`<div class="dec"><button data-act="work" class="${segs.length?'on work':''}">出勤</button><button data-act="rest" class="${a==='off'?'on rest':''}">休み（外す）</button></div>`}
       ${segs.length&&!lock?`<div class="segs">${segs.map((g,i)=>`<div class="sg" data-i="${i}" style="--sc:${storeColor(g.store)}">
@@ -827,6 +835,25 @@ details.sd summary::-webkit-details-marker{display:none}
   // 開いたスタッフのカレンダーは、自動更新で描き直しても開いたままにする
   S.openStaff=new Set();
   $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); } });
+  // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
+  function renderStaffDlg(){
+    const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
+    if(!p){ dlg.close(); return; }
+    const md=p.months?.[m]; const late=md?.firstSubmittedAt && new Date(md.firstSubmittedAt)>deadlineDate(m);
+    const md2=x=>new Date(x).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'});
+    dlg.innerHTML=`<div class="dlghead"><div><b style="font-size:17px">${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>
+        <div style="margin-top:4px">${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${md2(md.submittedAt)}</span>`:'<span class="badge">未提出</span>'} <span class="muted">${mNum(m)}月</span></div>
+        ${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${md2(md.editedAt)}に編集</div>`:''}</div>
+      <button class="dlgx" data-close aria-label="閉じる">✕</button></div>
+      ${personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft')}
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="btn small" data-proxy="${esc(p.id)}">✎ ${md?'この人の希望を編集する':'この人の希望を代わりに入力する'}</button><button class="btn small" data-close style="margin-left:auto">閉じる</button></div>`;
+  }
+  function openStaffDlg(uid){ const dlg=$('#staffDlg'); dlg.dataset.uid=uid; renderStaffDlg(); if(!dlg.open) dlg.showModal(); }
+  $('#staffDlg').addEventListener('click',e=>{
+    const dlg=$('#staffDlg');
+    if(e.target===dlg || e.target.closest('[data-close]')){ dlg.close(); return; }
+    const b=e.target.closest('[data-proxy]'); if(b){ dlg.close(); startProxy(b.dataset.proxy); }
+  });
   $('#staffList').addEventListener('toggle',e=>{ const d=e.target.closest('[data-sd]'); if(!d) return; d.open?S.openStaff.add(d.dataset.sd):S.openStaff.delete(d.dataset.sd); },true);
 
   async function loadKt(){
