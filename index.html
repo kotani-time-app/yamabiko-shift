@@ -121,6 +121,9 @@ textarea{min-height:70px;resize:vertical}
 .person .nm{font-weight:700}
 .pcd[data-pd]{cursor:pointer}
 .pcd[data-pd]:active{outline:2px solid var(--accent,#c8553d)}
+.wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
+.wstat b{background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:1px 8px}
+.wstat span{background:#f3eee9;border-radius:999px;padding:1px 7px;color:#5b524c}
 .nmtxt.tap{border-bottom:1px dashed currentColor;cursor:pointer}
 #staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
 #staffDlg::backdrop{background:rgba(30,20,15,.5)}
@@ -347,7 +350,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20c</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20d</div>
   </section>
 </main>
 
@@ -729,7 +732,7 @@ details.sd summary::-webkit-details-marker{display:none}
     $('#staffList').innerHTML = mine.length ? mine.map(p=>{ const md=p.months?.[m];
       const mini = personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft');
       const late = md?.firstSubmittedAt && new Date(md.firstSubmittedAt) > deadlineDate(m);
-      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に編集</div>`:''}</div>
+      return `<details class="sd" data-sd="${esc(p.id)}" ${S.openStaff?.has(p.id)?'open':''}><summary><div class="staff"><div><b>${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>${statsHtml(p,m)}${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${new Date(md.editedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に編集</div>`:''}</div>
       ${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${new Date(md.submittedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})} ▾</span>`:'<span class="badge">未提出 ▾</span>'}</div></summary>${mini}<button class="btn small" data-proxy="${esc(p.id)}" style="margin:2px 0 10px">✎ ${md?'この人の希望を編集する':'この人の希望を代わりに入力する'}</button></details>`; }).join('')
       : '<div class="empty">まだ誰も登録していません。「LINEで希望提出をお願いする」からスタッフに送ってください。</div>';
     // LINE（希望依頼）
@@ -840,6 +843,15 @@ details.sd summary::-webkit-details-marker{display:none}
   function gotoDay(d){ S.selDay=d; if($('#staffDlg').open) $('#staffDlg').close(); renderList(); $('#dayDetail').scrollIntoView({behavior:'smooth',block:'start'}); }
   $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); return; }
     const c=e.target.closest('[data-pd]'); if(c) gotoDay(Number(c.dataset.pd)); });
+  // 出勤予定日数と、出勤時刻ごとの日数
+  function workStats(p,m){
+    const by={}; let n=0;
+    for(let d=1;d<=daysIn(m);d++){ const g=segsOf(m,d,p.id); if(!g.length) continue; n++;
+      const s=[...g].sort((a,b)=>a.s.localeCompare(b.s))[0].s; by[s]=(by[s]||0)+1; }
+    return {n, by:Object.entries(by).sort((a,b)=>a[0].localeCompare(b[0]))};
+  }
+  function statsHtml(p,m){ const t=workStats(p,m);
+    return `<div class="wstat"><b>出勤${t.n}日</b>${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
   // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
   function renderStaffDlg(){
     const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
@@ -848,6 +860,7 @@ details.sd summary::-webkit-details-marker{display:none}
     const md2=x=>new Date(x).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'});
     dlg.innerHTML=`<div class="dlghead"><div><b style="font-size:17px">${esc(nick(p))}</b> <span style="font-size:13px">${homeStores(p,m).map(storeSpan).join('・')}</span>
         <div style="margin-top:4px">${md?`<span class="badge ${late?'warn':'ok'}">${late?'締切後':'提出済'} ${md2(md.submittedAt)}</span>`:'<span class="badge">未提出</span>'} <span class="muted">${mNum(m)}月</span></div>
+        ${statsHtml(p,m)}
         ${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${md2(md.editedAt)}に編集</div>`:''}</div>
       <button class="dlgx" data-close aria-label="閉じる">✕</button></div>
       ${personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft')}
