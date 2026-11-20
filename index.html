@@ -123,6 +123,8 @@ textarea{min-height:70px;resize:vertical}
 .pcd[data-pd]:active{outline:2px solid var(--accent,#c8553d)}
 .wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
 .wstat b{background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:1px 8px}
+.wstat b.want{background:#e6eef9;color:#2f5d9a}
+.sd summary .badge{white-space:nowrap}
 .wstat span{background:#f3eee9;border-radius:999px;padding:1px 7px;color:#5b524c}
 .nmtxt.tap{display:inline-block;padding:4px 0;border-bottom:1px dashed currentColor;cursor:pointer}
 #staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
@@ -350,7 +352,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20e</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20f</div>
   </section>
 </main>
 
@@ -851,7 +853,8 @@ details.sd summary::-webkit-details-marker{display:none}
     return {n, by:Object.entries(by).sort((a,b)=>a[0].localeCompare(b[0]))};
   }
   function statsHtml(p,m){ const t=workStats(p,m);
-    return `<div class="wstat"><b>出勤${t.n}日</b>${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
+    let want=0; for(let d=1;d<=daysIn(m);d++) if(['any','time'].includes(kind(wishOf(p,m,d)))) want++;
+    return `<div class="wstat"><b class="want">希望${want}日</b><b>出勤${t.n}日</b>${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
   // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
   function renderStaffDlg(){
     const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
