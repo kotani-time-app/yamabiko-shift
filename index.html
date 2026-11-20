@@ -124,14 +124,14 @@ textarea{min-height:70px;resize:vertical}
 .wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
 .wstat b{background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:1px 8px}
 .wstat span{background:#f3eee9;border-radius:999px;padding:1px 7px;color:#5b524c}
-.nmtxt.tap{border-bottom:1px dashed currentColor;cursor:pointer}
+.nmtxt.tap{display:inline-block;padding:4px 0;border-bottom:1px dashed currentColor;cursor:pointer}
 #staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
 #staffDlg::backdrop{background:rgba(30,20,15,.5)}
 #staffDlg .dlghead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
 #staffDlg .dlgx{border:0;background:none;font-size:22px;line-height:1;padding:2px 6px;color:#6b625c}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .tag.any{background:var(--ok-soft);color:var(--ok)} .tag.time{background:var(--time-soft);color:var(--time)} .tag.off{background:var(--off-soft);color:var(--off)} .tag.none{background:#eee;color:var(--sub)}
-.dec{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.dec{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:16px}
 .dec button{border:1px solid var(--line);background:#faf8f6;border-radius:8px;padding:7px;cursor:pointer;font-size:13px}
 .dec button.on.work{background:var(--ok);color:#fff;border-color:var(--ok)}
 .dec button.on.rest{background:#8a7f78;color:#fff;border-color:#8a7f78}
@@ -350,7 +350,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20d</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20e</div>
   </section>
 </main>
 
@@ -684,7 +684,7 @@ details.sd summary::-webkit-details-marker{display:none}
     if(act==='cal'){ openStaffDlg(uid); return; }
     if(row.closest('#dayResults') && act==='work') S.daySearch='';
     const cur=assignOf(m,d,uid);
-    if(act==='work'){ if(Array.isArray(cur)) setAssign(m,d,uid,null); else setAssign(m,d,uid,[defaultSeg(p,m,d)]); }
+    if(act==='work'){ if(Array.isArray(cur)) return; setAssign(m,d,uid,[defaultSeg(p,m,d)]); }   // 出勤中に押しても解除しない（誤タップ防止）。解除は ✕ か「休み」で
     if(act==='rest'){ setAssign(m,d,uid, cur==='off'?null:'off'); }
     if(act==='add'){ const segs=segsOf(m,d,uid); const last=segs[segs.length-1];
       const other=(S.settings.stores||[]).find(s=>s!==last?.store)||last?.store;
