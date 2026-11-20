@@ -339,7 +339,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-18a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20a</div>
   </section>
 </main>
 
@@ -775,7 +775,8 @@ details.sd summary::-webkit-details-marker{display:none}
     const rank=p=>{ const a=assignOf(m,d,p.id);
       if(isSupport(p,m)) return segsOf(m,d,p.id).some(g=>g.store===S.storeFilter)?0:5;
       if(Array.isArray(a)&&a.some(g=>S.storeFilter==='all'||g.store===S.storeFilter))return 0; return a==='off'?3:1; };
-    ppl.sort((a,b)=>rank(a)-rank(b) || (a.name||'').localeCompare(b.name||'','ja'));
+    const firstSeg=p=>{ const g=segsOf(m,d,p.id).filter(g=>S.storeFilter==='all'||g.store===S.storeFilter).sort((x,y)=>x.s.localeCompare(y.s))[0]; return g?g.s+g.e:'~'; };   // 出勤の人は開始時間が早い順
+    ppl.sort((a,b)=>rank(a)-rank(b) || (rank(a)===0?firstSeg(a).localeCompare(firstSeg(b)):0) || (a.name||'').localeCompare(b.name||'','ja'));
     const workN=ppl.filter(p=>segsOf(m,d,p.id).some(g=>S.storeFilter==='all'||g.store===S.storeFilter)).length;
     const groups=[['出勤',p=>rank(p)===0],['希望あり（未決定）',p=>rank(p)===1],['シフトから外した人',p=>rank(p)===3],['応援可能スタッフ（他店所属）',p=>rank(p)===5]];
     let body='';
