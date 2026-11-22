@@ -352,7 +352,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-20f</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-22a</div>
   </section>
 </main>
 
@@ -776,10 +776,15 @@ details.sd summary::-webkit-details-marker{display:none}
     if(!relevant(p,m,d)) return false;
     return ['any','time'].includes(kind(wishOf(p,m,d)));
   }
+  // 𝑚𝑖𝑛𝑎𝑘𝑜 のような飾り文字・全角・空白の違いを無視して検索する
+  const srchNorm=x=>String(x||'').normalize('NFKC').toLowerCase().replace(/[\s　]/g,'');
   function searchResults(m,d){
-    const q=(S.daySearch||'').trim().toLowerCase(); if(!q) return '';
-    const hits=people().filter(p=>!shownOnDay(p,m,d) && [nick(p),p.name||''].some(x=>x.toLowerCase().includes(q)));
-    return hits.length ? hits.map(p=>personRow(p,m,d,true)).join('') : '<div class="muted" style="padding:8px 0">該当するスタッフがいません</div>';
+    const q=srchNorm(S.daySearch); if(!q) return '';
+    if(!S.kt && !S.ktLoading){ S.ktLoading=true; loadKt().then(()=>{ if(S.daySearch) $('#dayResults').innerHTML=searchResults(S.listMonth,S.selDay); }); }
+    const match=p=>{ const kt=p.ktId&&S.kt?.find(k=>k.id===p.ktId); return [nick(p),p.name,kt?.name].some(x=>srchNorm(x).includes(q)); };
+    const all=people().filter(match), hits=all.filter(p=>!shownOnDay(p,m,d)), shown=all.filter(p=>shownOnDay(p,m,d));
+    const note=shown.length?`<div class="muted" style="padding:6px 0">${shown.map(p=>esc(nick(p))).join('、')}はこの日すでに上の欄に出ています</div>`:'';
+    return (hits.length ? hits.map(p=>personRow(p,m,d,true)).join('') : (shown.length?'':'<div class="muted" style="padding:8px 0">該当するスタッフがいません</div>'))+note;
   }
   function renderDay(){
     const m=S.listMonth, d=S.selDay, n=daysIn(m), w=wd(m,d);
