@@ -352,7 +352,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-22a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-23a</div>
   </section>
 </main>
 
@@ -387,6 +387,31 @@ details.sd summary::-webkit-details-marker{display:none}
   function ym(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
   function shift(m,n){ const [y,mo]=m.split('-').map(Number); return ym(new Date(y,mo-1+n,1)); }
   function daysIn(m){ const [y,mo]=m.split('-').map(Number); return new Date(y,mo,0).getDate(); }
+  // 日本の祝日（振替休日・国民の休日を含む。春分・秋分は計算式）
+  const HOL={};
+  function holidaysOf(y){
+    if(HOL[y]) return HOL[y];
+    const h={}, k=(mo,d)=>mo+'-'+d, put=(mo,d,n)=>{ h[k(mo,d)]=n; };
+    const nthMon=(mo,n)=>{ const f=new Date(y,mo-1,1).getDay(); return 1+((8-f)%7)+(n-1)*7; };
+    put(1,1,'元日'); put(1,nthMon(1,2),'成人の日'); put(2,11,'建国記念の日'); put(2,23,'天皇誕生日');
+    put(3,Math.floor(20.8431+0.242194*(y-1980)-Math.floor((y-1980)/4)),'春分の日');
+    put(4,29,'昭和の日'); put(5,3,'憲法記念日'); put(5,4,'みどりの日'); put(5,5,'こどもの日');
+    put(7,nthMon(7,3),'海の日'); put(8,11,'山の日'); put(9,nthMon(9,3),'敬老の日');
+    put(9,Math.floor(23.2488+0.242194*(y-1980)-Math.floor((y-1980)/4)),'秋分の日');
+    put(10,nthMon(10,2),'スポーツの日'); put(11,3,'文化の日'); put(11,23,'勤労感謝の日');
+    const isH=dt=>!!h[k(dt.getMonth()+1,dt.getDate())];
+    for(const key of Object.keys(h)){   // 振替休日：日曜の祝日の次の平日
+      const [mo,d]=key.split('-').map(Number); const dt=new Date(y,mo-1,d);
+      if(dt.getDay()===0){ const x=new Date(dt); do x.setDate(x.getDate()+1); while(isH(x)); h[k(x.getMonth()+1,x.getDate())]='振替休日'; }
+    }
+    for(let t=new Date(y,0,2); t.getFullYear()===y; t.setDate(t.getDate()+1)){   // 国民の休日：祝日にはさまれた平日
+      const a=new Date(t), b=new Date(t); a.setDate(a.getDate()-1); b.setDate(b.getDate()+1);
+      if(!isH(t) && t.getDay()!==0 && isH(a) && isH(b)) h[k(t.getMonth()+1,t.getDate())]='国民の休日';
+    }
+    return HOL[y]=h;
+  }
+  function holiday(m,d){ const [y,mo]=m.split('-').map(Number); return holidaysOf(y)[mo+'-'+d]||''; }
+  function dcls(m,d){ const w=wd(m,d); return (w===0||holiday(m,d))?'sun':w===6?'sat':''; }
   function wd(m,d){ const [y,mo]=m.split('-').map(Number); return new Date(y,mo-1,d).getDay(); }
   function mLabel(m){ const [y,mo]=m.split('-'); return `${y}年${Number(mo)}月`; }
   function mNum(m){ return Number(m.slice(5)); }
@@ -434,7 +459,7 @@ details.sd summary::-webkit-details-marker{display:none}
       else if(mode==='final') inner=`<span class="tbd">未定</span>${ghost}`;
       else inner = ghost || (k==='off'?'<span class="rest" style="color:var(--off)">×</span>':'');
       const ch=changeFn?changeFn(d):null;
-      h+=`<div ${mode==='draft'?`data-pd="${d}"`:''} class="pcd ${segs.length?'work':''} ${ch?'changed':''} ${w===6?'sat':w===0?'sun':''}"><b>${d}${ch?'<i class="chg">✎</i>':''}</b>${inner}</div>`;
+      h+=`<div ${mode==='draft'?`data-pd="${d}"`:''} class="pcd ${segs.length?'work':''} ${ch?'changed':''} ${dcls(m,d)}"><b>${d}${ch?'<i class="chg">✎</i>':''}</b>${inner}</div>`;
     }
     h+='</div>';
     const hrs=Math.round(mins/60*100)/100;
@@ -509,7 +534,7 @@ details.sd summary::-webkit-details-marker{display:none}
     for(let d=1; d<=n; d++){
       const v=S.draft.days[d]||''; const k=kind(v); const w=wd(m,d);
       const [a,b] = (k==='time'? v : defTime()).split('-');
-      h+=`<div class="day ${w===6?'sat':w===0?'sun':''}" data-d="${d}">
+      h+=`<div class="day ${dcls(m,d)}" data-d="${d}">
         <div class="d">${mNum(m)}/${d}<small>${WD[w]}</small></div>
         <div class="seg">
           <button class="${k==='any'?'on any':''}" data-k="any" ${dis?'disabled':''}>◎ 終日</button>
@@ -722,7 +747,7 @@ details.sd summary::-webkit-details-marker{display:none}
       const avail=ppl.filter(p=>inStoreM(p)&&['any','time'].includes(kind(wishOf(p,m,d)))).length;
       const sup=S.storeFilter==='all'?0:ppl.filter(p=>isSupport(p,m)&&['any','time'].includes(kind(wishOf(p,m,d)))&&!segsOf(m,d,p.id).length).length;
       const w=wd(m,d); const lv=work===0?(avail?'l1':''):work<=1?'l2':'l3';
-      c+=`<button data-d="${d}" class="${lv} ${w===6?'sat':w===0?'sun':''} ${d===S.selDay?'sel':''}"><span class="hd"><span class="n">${d}</span><span class="a">可${avail}${sup?`<b class="supn">+${sup}</b>`:''}</span></span>${ents.map(x=>`<span class="pp">${S.storeFilter==='all'?`<i class="dot" style="background:${storeColor(x.store)}"></i>`:''}${esc(x.name)}</span><span class="tt">${labShort(x.s)}-${labShort(x.e)}</span>`).join('')}</button>`;
+      c+=`<button data-d="${d}" class="${lv} ${dcls(m,d)} ${d===S.selDay?'sel':''}"><span class="hd"><span class="n">${d}</span><span class="a">可${avail}${sup?`<b class="supn">+${sup}</b>`:''}</span></span>${ents.map(x=>`<span class="pp">${S.storeFilter==='all'?`<i class="dot" style="background:${storeColor(x.store)}"></i>`:''}${esc(x.name)}</span><span class="tt">${labShort(x.s)}-${labShort(x.e)}</span>`).join('')}</button>`;
     }
     $('#cal').innerHTML=c;
     $('#storeKey').innerHTML = S.storeFilter==='all' ? stores.map(s=>`<span><i class="dot" style="background:${storeColor(s)}"></i>${esc(s)}</span>`).join('') : '';
@@ -804,7 +829,7 @@ details.sd summary::-webkit-details-marker{display:none}
       const g=ppl.filter(fn); if(!g.length) continue;
       body+=`<div class="sechead">${title}（${g.length}）</div>`+g.map(p=>personRow(p,m,d,false)).join('');
     }
-    $('#dayDetail').innerHTML=`<h3><span style="color:${w===6?'var(--sat)':w===0?'var(--sun)':'inherit'}">${mNum(m)}月${d}日（${WD[w]}）</span><span class="badge ok">出勤 ${workN}人</span></h3>
+    $('#dayDetail').innerHTML=`<h3><span style="color:${dcls(m,d)==='sun'?'var(--sun)':w===6?'var(--sat)':'inherit'}">${mNum(m)}月${d}日（${WD[w]}）${holiday(m,d)?`<small style="font-size:13px;margin-left:6px">${holiday(m,d)}</small>`:''}</span><span class="badge ok">出勤 ${workN}人</span></h3>
       <div class="muted">この日に出勤できる希望を出している人と、出勤が決まった人を表示しています${S.storeFilter==='all'?'':'（応援可能スタッフは紫）'}。</div>
       ${body||'<div class="empty" style="padding:14px">この日に出勤できる希望を出している人はいません</div>'}
       <div class="searchbox">
@@ -999,7 +1024,7 @@ details.sd summary::-webkit-details-marker{display:none}
       const w=wd(m,d); let list=pub.days?.[d]||[];
       list = S.pubStore==='mine' ? list.filter(x=>x.uid===S.uid) : list.filter(x=>x.store===S.pubStore);
       if(S.pubStore==='mine' && !list.length) continue;
-      h+=`<div class="pday"><div class="dh ${w===6?'sat':w===0?'sun':''}">${dateLabel(m,d)}</div>${
+      h+=`<div class="pday"><div class="dh ${dcls(m,d)}">${dateLabel(m,d)}</div>${
         list.length?list.map(x=>`<div class="pline ${x.uid===S.uid&&S.pubStore!=='mine'?'mine':''}"><span>${S.pubStore==='mine'?storeSpan(x.store):esc((S.settings.nicknames||{})[x.uid]||x.name)}</span><span>${lab(x.s)}〜${lab(x.e)}</span></div>`).join(''):'<div class="pline muted">なし</div>'}</div>`;
     }
     $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card">${h||'<div class="empty">この月の出勤はありません</div>'}</div>`;
