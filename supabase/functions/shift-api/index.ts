@@ -311,7 +311,13 @@ Deno.serve(async (req) => {
       case "published": {
         needMonth();
         const { data } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
-        return json({ published: pubShape(data), settings: await publicSettings(settings) });
+        const pub = pubShape(data);
+        if (pub) {   // 各出勤に在籍店舗を付ける（在籍店舗のシフト表に応援出勤も出すため）
+          const { data: staff } = await sb.from("shift_staff").select("id,store");
+          const home = new Map((staff ?? []).map((s) => [s.id, s.store]));
+          for (const list of Object.values((pub.days ?? {}) as Record<string, any[]>)) for (const x of list) x.home = home.get(x.uid) ?? null;
+        }
+        return json({ published: pub, settings: await publicSettings(settings) });
       }
 
       case "adminData": {

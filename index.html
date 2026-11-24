@@ -121,6 +121,8 @@ textarea{min-height:70px;resize:vertical}
 .person .nm{font-weight:700}
 .pcd[data-pd]{cursor:pointer}
 .pcd[data-pd]:active{outline:2px solid var(--accent,#c8553d)}
+.awaytag{font-size:12px;color:#7a5aa8;border:1px solid #cdbbe6;background:#fff;border-radius:999px;padding:0 7px;margin-left:4px;white-space:nowrap;font-weight:700}
+.awayhd{font-size:12px;color:#7a5aa8;margin:6px 0 2px 10px}
 .wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
 .wstat b{background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:1px 8px}
 .wstat b.want{background:#e6eef9;color:#2f5d9a}
@@ -358,7 +360,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25b</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25c</div>
   </section>
 </main>
 
@@ -1054,10 +1056,13 @@ details.sd summary::-webkit-details-marker{display:none}
     let h='';
     for(let d=1; d<=n; d++){
       const w=wd(m,d); let list=pub.days?.[d]||[];
-      list = S.pubStore==='mine' ? list.filter(x=>x.uid===S.uid) : list.filter(x=>x.store===S.pubStore);
-      if(S.pubStore==='mine' && !list.length) continue;
+      const here=list.filter(x=>x.store===S.pubStore);
+      const away=list.filter(x=>x.store!==S.pubStore && x.home===S.pubStore);   // この店舗在籍で、他店へ応援に行く人
+      const nm=x=>esc((S.settings.nicknames||{})[x.uid]||x.name);
+      const row=(x,tag)=>`<div class="pline ${x.uid===S.uid?'mine':''}"><span>${nm(x)}${tag}</span><span>${lab(x.s)}〜${lab(x.e)}</span></div>`;
       h+=`<div class="pday"><div class="dh ${dcls(m,d)}">${dateLabel(m,d)}</div>${
-        list.length?list.map(x=>`<div class="pline ${x.uid===S.uid&&S.pubStore!=='mine'?'mine':''}"><span>${S.pubStore==='mine'?storeSpan(x.store):esc((S.settings.nicknames||{})[x.uid]||x.name)}</span><span>${lab(x.s)}〜${lab(x.e)}</span></div>`).join(''):'<div class="pline muted">なし</div>'}</div>`;
+        here.length?here.map(x=>row(x, x.home&&x.home!==S.pubStore?` <small class="awaytag">${storeSpan(x.home)}から応援</small>`:'')).join(''):'<div class="pline muted">なし</div>'}${
+        away.length?`<div class="awayhd">他店へ応援</div>`+away.map(x=>row(x,` <small class="awaytag">→ ${storeSpan(x.store)}</small>`)).join(''):''}</div>`;
     }
     $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card">${h||'<div class="empty">この月の出勤はありません</div>'}</div>`;
   }
