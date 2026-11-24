@@ -123,6 +123,15 @@ textarea{min-height:70px;resize:vertical}
 .pcd[data-pd]:active{outline:2px solid var(--accent,#c8553d)}
 .awaytag{font-size:12px;color:#7a5aa8;border:1px solid #cdbbe6;background:#fff;border-radius:999px;padding:0 7px;margin-left:4px;white-space:nowrap;font-weight:700}
 .awayhd{font-size:12px;color:#7a5aa8;margin:6px 0 2px 10px}
+.laborbox{border:1px solid var(--line,#e5ddd6);border-radius:12px;padding:12px;margin-top:12px;background:#fbf8f5}
+.laborbox .lbrow{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:14px}
+.laborbox .lbrow>:last-child{white-space:nowrap}
+.laborbox .lbbar{height:8px;border-radius:99px;background:#eee4dc;margin-top:8px;overflow:hidden}
+.laborbox .lbbar i{display:block;height:100%}
+.laborbox .lbdiff{margin-top:6px;font-size:15px;color:var(--ok)}
+.laborbox .lbdiff.over{color:var(--sun)}
+.laborbox .lbnote{font-size:12px;color:#6b625c;margin-top:8px;line-height:1.6}
+.wstat b.emp{background:#fdeee6;color:#b5532e}
 .wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
 .wstat b{background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:1px 8px}
 .wstat b.want{background:#e6eef9;color:#2f5d9a}
@@ -329,6 +338,14 @@ details.sd summary::-webkit-details-marker{display:none}
       <div id="remindList"></div>
     </div>
     <div class="card">
+      <h2>社員の労働時間の計算</h2>
+      <div class="muted" style="margin-bottom:8px">勤怠給料システムで「社員」になっている人に、その月の予定労働時間と残業になる時間を表示します（本人のシフト表・シフト作成のスタッフ別カレンダー）。休憩は法定の最低限（6時間超45分・8時間超60分）を引いて計算します。</div>
+      <div class="row" style="margin-bottom:8px"><span style="min-width:9em">週の法定労働時間</span><select id="lbWeekly" class="ktsel"><option value="44">44時間（特例：常時10人未満の飲食店）</option><option value="40">40時間</option></select></div>
+      <div class="row" style="margin-bottom:8px"><span style="min-width:9em">1か月単位の変形労働時間制</span><select id="lbHenkei" class="ktsel"></select></div>
+      <div class="muted" style="margin-bottom:8px">変形労働時間制は、就業規則（または労使協定）に定めて労働基準監督署に届け出た月から選んでください。届け出るまでは「未適用」のままにします（そのあいだは、1日8時間・週の法定労働時間を超えた分が残業になります）。</div>
+      <button class="btn small" id="lbSave">保存する</button>
+    </div>
+    <div class="card">
       <h2>勤怠給料システムとの紐付け</h2>
       <div class="muted" style="margin-bottom:6px">このアプリのスタッフと、勤怠給料システムのスタッフを1対1で結びつけます。結びつけた人だけ遅刻チェックができます。名前が同じ人は「候補」が出るので、押すだけで結びつけられます。</div>
       <div id="ktList" class="muted">読み込み中…</div>
@@ -360,7 +377,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25c</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25d</div>
   </section>
 </main>
 
@@ -381,7 +398,7 @@ details.sd summary::-webkit-details-marker{display:none}
   const PAGE_URL = 'https://liff.line.me/' + LIFF_ID;
   // =====================================
   const DEV = new URLSearchParams(location.search).get('devtoken');   // 動作確認用
-  const DEFAULTS = { stores:['店舗1','店舗2','店舗3'], open:'10:00', close:'27:00', deadline:20, locked:{} };
+  const DEFAULTS = { stores:['店舗1','店舗2','店舗3'], open:'10:00', close:'27:00', deadline:20, locked:{}, labor:{weekly:44, henkeiFrom:null} };
 
   const S = {
     db:null, uid:null, admin:false, canWrite:true,
@@ -883,6 +900,54 @@ details.sd summary::-webkit-details-marker{display:none}
   function gotoDay(d){ S.selDay=d; if($('#staffDlg').open) $('#staffDlg').close(); renderList(); $('#dayDetail').scrollIntoView({behavior:'smooth',block:'start'}); }
   $('#staffList').addEventListener('click',e=>{ const b=e.target.closest('[data-proxy]'); if(b){ e.preventDefault(); startProxy(b.dataset.proxy); return; }
     const c=e.target.closest('[data-pd]'); if(c) gotoDay(Number(c.dataset.pd)); });
+  // ---------- 社員の労働時間（予定）----------
+  // 1日の予定労働時間：休憩は法定の最低限（6時間超45分・8時間超60分）を引く。店舗間の空き時間は休憩に数える（勤怠側と同じ式）
+  function plannedOf(segs){
+    const v=[...segs].sort((a,b)=>a.s.localeCompare(b.s)); if(!v.length) return {work:0,brk:0};
+    const span=v.reduce((n,g)=>n+Math.max(0,toMin(g.e)-toMin(g.s)),0);
+    const gaps=v.slice(1).reduce((n,g,i)=>n+Math.max(0,toMin(g.s)-toMin(v[i].e)),0);
+    const need=span>480?60:span>360?45:0, brk=Math.max(0,need-gaps);
+    return {work:Math.max(0,span-brk), brk};
+  }
+  const isEmp=p=>p?.empType==='社員';
+  function laborOf(m, segFn){
+    const L={...DEFAULTS.labor,...(S.settings.labor||{})}, n=daysIn(m), weekly=L.weekly*60;
+    const henkei=!!L.henkeiFrom && m>=L.henkeiFrom;
+    const frame=Math.floor(weekly*n/7);   // 月の法定労働時間の総枠（44時間・31日なら194.8時間）
+    const days=[]; for(let d=1;d<=n;d++){ const pl=plannedOf(segFn(d)); days.push({d,...pl}); }
+    const total=days.reduce((a,x)=>a+x.work,0);
+    // 週（日曜始まり・月の中の日だけ）
+    const weeks=[]; let cur=null;
+    for(const x of days){ if(!cur || wd(m,x.d)===0){ cur={from:x.d,to:x.d,work:0,days:[]}; weeks.push(cur); } cur.to=x.d; cur.work+=x.work; cur.days.push(x); }
+    // 変形なし：1日8時間超＋週の法定超（8時間超の分は除く）
+    let daily=0, week=0;
+    for(const w of weeks){ let reg=0; for(const x of w.days){ daily+=Math.max(0,x.work-480); reg+=Math.min(480,x.work); } week+=Math.max(0,reg-weekly); }
+    const normalOt=daily+week;
+    const henkeiOt=Math.max(0,total-frame);   // 予定どおりなら、月の総枠を超えた分だけ
+    return {L,henkei,frame,total,days,weeks,normalOt,henkeiOt,ot:henkei?henkeiOt:normalOt,workDays:days.filter(x=>x.work>0).length};
+  }
+  const hh=min=>{ const h=Math.floor(min/6)/10; return (Number.isInteger(h)?h:h.toFixed(1))+'時間'; };
+  const hmin=min=>`${Math.floor(min/60)}時間${min%60?String(min%60).padStart(2,'0')+'分':''}`;
+  function laborBox(m, segFn){
+    const r=laborOf(m,segFn), diff=r.total-r.frame, wk=r.L.weekly;
+    const long=r.days.filter(x=>x.work>480);
+    const bar=Math.min(100,Math.round(r.total/r.frame*100));
+    return `<div class="laborbox">
+      <b>⏱ ${mNum(m)}月の労働時間（社員）</b>
+      <div class="lbrow"><span>月の上限（週${wk}時間・${daysIn(m)}日）</span><b>${hh(r.frame)}</b></div>
+      <div class="lbrow"><span>予定の労働時間（${r.workDays}日・休憩を除く）</span><b>${hmin(r.total)}</b></div>
+      <div class="lbbar"><i style="width:${bar}%;background:${diff>0?'var(--sun)':'var(--ok)'}"></i></div>
+      <div class="lbdiff ${diff>0?'over':''}">${diff>0?`上限を <b>${hmin(diff)}</b> 超えています`:`上限まで あと <b>${hmin(-diff)}</b>`}</div>
+      ${r.henkei
+        ? `<div class="lbnote">1か月単位の変形労働時間制（${esc(r.L.henkeiFrom.replace('-','年')+'月')}から適用）。残業代がつくのは：<br>・1日：8時間を超える予定の日はその予定を、それ以外の日は8時間を超えて働いた分<br>・1週：${wk}時間を超える予定の週はその予定を、それ以外の週は${wk}時間を超えて働いた分<br>・1か月：合計が <b>${hh(r.frame)}</b> を超えた分</div>
+           <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.henkeiOt)}</b></div>
+           ${long.length?`<div class="lbnote">8時間を超える予定の日：${long.map(x=>`${mNum(m)}/${x.d} ${hmin(x.work)}`).join('、')}</div>`:''}`
+        : `<div class="lbnote">変形労働時間制は未適用です。今は <b>1日8時間</b>・<b>週${wk}時間</b>を超えた分が残業代になります。</div>
+           <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.normalOt)}</b></div>
+           <div class="lbrow muted"><span>（変形労働時間制なら）</span><span>${hmin(r.henkeiOt)}</span></div>`}
+      <div class="lbnote">※ 予定シフトからの計算です。実際の残業代は勤怠の打刻で決まります。週は日曜始まり・月の中の日だけで数えています。</div>
+    </div>`;
+  }
   // 出勤予定日数と、出勤時刻ごとの日数
   function workStats(p,m){
     const by={}; let n=0;
@@ -892,7 +957,8 @@ details.sd summary::-webkit-details-marker{display:none}
   }
   function statsHtml(p,m){ const t=workStats(p,m);
     let want=0; for(let d=1;d<=daysIn(m);d++) if(['any','time'].includes(kind(wishOf(p,m,d)))) want++;
-    return `<div class="wstat"><b class="want">希望${want}日</b><b>出勤${t.n}日</b>${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
+    const lb=isEmp(p)?laborOf(m,d=>segsOf(m,d,p.id)):null;
+    return `<div class="wstat"><b class="want">希望${want}日</b><b>出勤${t.n}日</b>${lb?`<b class="emp">社員 ${hmin(lb.total)}／上限${hh(lb.frame)}</b>`:''}${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
   // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
   function renderStaffDlg(){
     const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
@@ -905,6 +971,7 @@ details.sd summary::-webkit-details-marker{display:none}
         ${md?.note?`<div class="muted">📝 ${esc(md.note)}</div>`:''}${md?.editedAt?`<div class="muted">✎ ${esc(editorName(md.editedBy))}が${md2(md.editedAt)}に編集</div>`:''}</div>
       <button class="dlgx" data-close aria-label="閉じる">✕</button></div>
       ${personCal(m, d=>segsOf(m,d,p.id), d=>wishOf(p,m,d), d=>assignOf(m,d,p.id)==='off', 'draft')}
+      ${isEmp(p)?laborBox(m, d=>segsOf(m,d,p.id)):''}
       <div style="display:flex;gap:8px;margin-top:10px"><button class="btn small" data-proxy="${esc(p.id)}">✎ ${md?'この人の希望を編集する':'この人の希望を代わりに入力する'}</button><button class="btn small" data-close style="margin-left:auto">閉じる</button></div>`;
   }
   function openStaffDlg(uid){ const dlg=$('#staffDlg'); dlg.dataset.uid=uid; renderStaffDlg(); if(!dlg.open) dlg.showModal(); }
@@ -1047,6 +1114,7 @@ details.sd summary::-webkit-details-marker{display:none}
       let cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], d=>(pub.offs?.[d]||[]).includes(S.uid), 'final', chg);
       const chList=[]; for(let d=1;d<=n;d++){ const c=chg(d); if(c) chList.push(`<li>${dateLabel(m,d)}：${esc(c.name||'店長')}が${new Date(c.at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に変更</li>`); }
       if(chList.length) cal+=`<div class="chgbox"><b>✎ 公開後に変更があった日</b><ul>${chList.join('')}</ul></div>`;
+      if(isEmp(S.mine)) cal+=laborBox(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid));
       const unpub=allSt.filter(s=>!pst[s]);
       const note=unpub.length?`<div class="muted" style="margin-bottom:8px">${unpub.map(storeSpan).join('・')}のシフトはまだ公開されていません（「未定」と表示されます）</div>`:'';
       $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div>${note}<div class="card" style="padding:10px">${cal}</div>`;
@@ -1070,6 +1138,9 @@ details.sd summary::-webkit-details-marker{display:none}
   // ---------- 設定 ----------
   let editStores=null;
   function renderSettings(){
+    { const L={...DEFAULTS.labor,...(S.settings.labor||{})}; $('#lbWeekly').value=String(L.weekly);
+      const ms=[]; for(let i=-2;i<=12;i++) ms.push(shift(ym(new Date()),i)); if(L.henkeiFrom && !ms.includes(L.henkeiFrom)) ms.unshift(L.henkeiFrom);
+      $('#lbHenkei').innerHTML=`<option value="">未適用（届出前）</option>`+ms.map(x=>`<option value="${x}" ${x===L.henkeiFrom?'selected':''}>${mLabel(x)}から適用</option>`).join(''); }
     if(!editStores) editStores=[...(S.settings.stores||[])];
     const nk=S.settings.nicknames||{};
     $('#supList').innerHTML = people().length ? people().map(p=>{ const home=homeStores(p,''); const others=(S.settings.stores||[]).filter(s=>!home.includes(s));
@@ -1129,6 +1200,7 @@ details.sd summary::-webkit-details-marker{display:none}
     await saveSettingsDoc({...S.settings, stores, open:$('#sOpen').value, close:$('#sClose').value, deadline:Number($('#sDeadline').value)}, '設定を保存しました');
     editStores=null;
   };
+  $('#lbSave').onclick=()=>saveSettingsDoc({...S.settings, labor:{weekly:Number($('#lbWeekly').value), henkeiFrom:$('#lbHenkei').value||null}}, '社員の労働時間の設定を保存しました');
   async function saveSettingsDoc(data,msg){
     try{ const r=await api('saveSettings',{settings:data}); S.settings={...DEFAULTS,...r.settings}; $('#hdrStore').textContent=(S.settings.stores||[]).join('・'); toast(msg); render(); }
     catch(err){ toast(err.code==='forbidden'?'設定を変更する権限がありません':'保存できませんでした'); }

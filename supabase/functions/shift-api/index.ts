@@ -65,7 +65,7 @@ function staffShape(st: any, reqs: any[], admin = false) {
   for (const r of reqs) {
     months[r.month] = { ...(r.data ?? {}), submittedAt: r.submitted_at, firstSubmittedAt: r.first_submitted_at };
   }
-  const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, remindMin: st.remind_min ?? null, months };
+  const base: Record<string, unknown> = { name: st.name, stores: st.store ? [st.store] : [], defTime: st.def_time, remindMin: st.remind_min ?? null, empType: st.emp_type ?? null, months };
   if (admin) { base.support = st.support_stores ?? []; base.ktId = st.kt_staff_id ?? null; }   // 店長だけに返す
   return base;
 }
@@ -138,6 +138,18 @@ async function ktCall(action: string, payload: Record<string, unknown> = {}) {
   if (!r.ok) throw new HttpError(502, "kt_error");
   return j;
 }
+// 1日の予定労働時間（分）。休憩は法定の最低限（6時間超45分・8時間超60分）を引く。店舗間の空き時間は休憩に数える
+const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+export function plannedOf(segs: { s: string; e: string }[]) {
+  const v = [...segs].sort((a, b) => a.s.localeCompare(b.s));
+  if (!v.length) return { work: 0, brk: 0, start: null as string | null, end: null as string | null };
+  const span = v.reduce((n, g) => n + Math.max(0, toMin(g.e) - toMin(g.s)), 0);
+  const gaps = v.slice(1).reduce((n, g, i) => n + Math.max(0, toMin(g.s) - toMin(v[i].e)), 0);
+  const need = span > 8 * 60 ? 60 : span > 6 * 60 ? 45 : 0;
+  const brk = Math.max(0, need - gaps);
+  const end = v.reduce((a, g) => (toMin(g.e) > toMin(a) ? g.e : a), v[0].e);
+  return { work: Math.max(0, span - brk), brk, start: v[0].s, end };
+}
 // その月の「各スタッフ・各日の最初の開始時刻」を勤怠側へ送る（紐付け済みのスタッフのみ）
 async function syncStarts(month: string) {
   const [{ data: sched }, { data: staff }] = await Promise.all([
@@ -150,10 +162,12 @@ async function syncStarts(month: string) {
     for (const [uid, v] of Object.entries(m)) {
       const ktId = kt.get(uid); if (!ktId || !Array.isArray(v) || !v.length) continue;
       const first = [...v].sort((a: any, b: any) => a.s.localeCompare(b.s))[0] as any;
-      const [hh, mm] = first.s.split(":").map(Number);
+      const pl = plannedOf(v as any[]);
       const date = `${month}-${String(d).padStart(2, "0")}`;
-      const start = new Date(Date.parse(`${date}T00:00:00+09:00`) + (hh * 60 + mm) * 60000).toISOString();
-      rows.push({ kotani_staff_id: ktId, work_date: date, start_at: start, store_name: KT_STORE[first.store] ?? first.store });
+      const base = Date.parse(`${date}T00:00:00+09:00`);
+      const start = new Date(base + toMin(first.s) * 60000).toISOString();
+      const endAt = new Date(base + toMin(pl.end!) * 60000).toISOString();
+      rows.push({ kotani_staff_id: ktId, work_date: date, start_at: start, end_at: endAt, planned_min: pl.work, planned_break_min: pl.brk, store_name: KT_STORE[first.store] ?? first.store });
     }
   }
   return await ktCall("syncStarts", { month, rows });
@@ -220,6 +234,16 @@ async function runLateAlerts(now: number) {
   }
   if (lines.length && admins.size) await linePush([...admins], `【遅刻アラート】出勤時刻を過ぎても、出勤の打刻がありません\n${lines.join("\n")}`);
   return { late: lines.length };
+}
+
+// 勤怠システムの雇用区分（社員／アルバイト）をシフトアプリ側に写す
+async function refreshEmpTypes(ktStaff: any[]) {
+  const type = new Map(ktStaff.map((k) => [k.id, k.employment_type ?? null]));
+  const { data } = await sb.from("shift_staff").select("id,kt_staff_id,emp_type").not("kt_staff_id", "is", null);
+  for (const st of data ?? []) {
+    const t = type.get(st.kt_staff_id) ?? null;
+    if (t !== st.emp_type) await sb.from("shift_staff").update({ emp_type: t }).eq("id", st.id);
+  }
 }
 
 function background(p: Promise<unknown>) {
@@ -440,6 +464,9 @@ Deno.serve(async (req) => {
         if (TIME_RE.test(s.open ?? "")) next.open = s.open;
         if (TIME_RE.test(s.close ?? "")) next.close = s.close;
         if (Number(s.deadline) >= 1 && Number(s.deadline) <= 28) next.deadline = Number(s.deadline);
+        if (s.labor && typeof s.labor === "object") {   // 社員の労働時間の計算（週の法定労働時間・1か月単位の変形労働時間制の適用開始月）
+          next.labor = { weekly: Number(s.labor.weekly) === 40 ? 40 : 44, henkeiFrom: MONTH_RE.test(s.labor.henkeiFrom ?? "") ? s.labor.henkeiFrom : null };
+        }
         if (s.locked && typeof s.locked === "object") {
           const l: Record<string, boolean> = {};
           for (const [k, v] of Object.entries(s.locked)) if (MONTH_RE.test(k) && v) l[k] = true;
@@ -470,14 +497,18 @@ Deno.serve(async (req) => {
 
       case "ktStaff": {
         needAdmin();
-        return json(await ktCall("staff"));
+        const r = await ktCall("staff");
+        background(refreshEmpTypes(r.staff ?? []));
+        return json(r);
       }
 
       case "setKtLink": {
         needAdmin();
         const ktId = body.ktId ? String(body.ktId) : null;
         if (ktId && !/^[0-9a-f-]{36}$/.test(ktId)) throw new HttpError(400, "bad_id");
-        const { error } = await sb.from("shift_staff").update({ kt_staff_id: ktId }).eq("id", String(body.uid ?? ""));
+        let empType: string | null = null;
+        if (ktId) { try { empType = ((await ktCall("staff")).staff ?? []).find((k: any) => k.id === ktId)?.employment_type ?? null; } catch { /* 取れなくても紐付けは続ける */ } }
+        const { error } = await sb.from("shift_staff").update({ kt_staff_id: ktId, emp_type: empType }).eq("id", String(body.uid ?? ""));
         if (error) throw error;
         const { data: months } = await sb.from("shift_schedule").select("month").order("month", { ascending: false }).limit(3);
         background(Promise.all((months ?? []).map((m) => syncStarts(m.month))));

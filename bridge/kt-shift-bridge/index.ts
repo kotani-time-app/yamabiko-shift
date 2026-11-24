@@ -54,7 +54,11 @@ Deno.serve(async (req) => {
       const { start, end } = monthRange(body.month);
       const rows = (Array.isArray(body.rows) ? body.rows : []).filter((r: any) =>
         UUID_RE.test(r?.kotani_staff_id ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(r?.work_date ?? "") && r.work_date >= start && r.work_date < end && !isNaN(Date.parse(r?.start_at)))
-        .map((r: any) => ({ kotani_staff_id: r.kotani_staff_id, work_date: r.work_date, start_at: r.start_at, store_name: String(r.store_name ?? "").slice(0, 20), updated_at: new Date().toISOString() }));
+        .map((r: any) => ({ kotani_staff_id: r.kotani_staff_id, work_date: r.work_date, start_at: r.start_at, store_name: String(r.store_name ?? "").slice(0, 20),
+          end_at: r.end_at && !isNaN(Date.parse(r.end_at)) ? r.end_at : null,
+          planned_min: Number.isInteger(r.planned_min) && r.planned_min >= 0 && r.planned_min <= 1440 ? r.planned_min : null,
+          planned_break_min: Number.isInteger(r.planned_break_min) && r.planned_break_min >= 0 && r.planned_break_min <= 240 ? r.planned_break_min : null,
+          updated_at: new Date().toISOString() }));
       const del = await db.from("kt_shift_starts").delete().gte("work_date", start).lt("work_date", end);
       if (del.error) throw del.error;
       if (rows.length) { const ins = await db.from("kt_shift_starts").upsert(rows, { onConflict: "kotani_staff_id,work_date" }); if (ins.error) throw ins.error; }
