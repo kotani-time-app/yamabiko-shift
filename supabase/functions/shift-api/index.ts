@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
       case "published": {
         needMonth();
         const { data } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
-        return json({ published: data ? { days: data.days, offs: data.offs, changes: data.changes ?? {}, publishedAt: data.published_at } : null, settings: await publicSettings(settings) });
+        return json({ published: data ? { days: data.days, offs: data.offs, changes: data.changes ?? {}, publishedAt: data.published_at, publishedByName: data.published_by_name ?? null } : null, settings: await publicSettings(settings) });
       }
 
       case "adminData": {
@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
         return json({
           all,
           schedule: sched ? { days: sched.days, updatedAt: sched.updated_at } : { days: {} },
-          published: pub ? { days: pub.days, offs: pub.offs, changes: pub.changes ?? {}, publishedAt: pub.published_at } : null,
+          published: pub ? { days: pub.days, offs: pub.offs, changes: pub.changes ?? {}, publishedAt: pub.published_at, publishedByName: pub.published_by_name ?? null } : null,
           settings: await publicSettings(settings),
         });
       }
@@ -372,10 +372,20 @@ Deno.serve(async (req) => {
         }
         const now = new Date().toISOString();
         const changes = (sched?.changes ?? {}) as Record<string, unknown>;
-        const { error } = await sb.from("shift_published").upsert({ month, days, offs, changes, published_at: now }, { onConflict: "month" });
+        const byName = meRow?.nickname || meRow?.name || "店長";
+        const { error } = await sb.from("shift_published").upsert({ month, days, offs, changes, published_at: now, published_by: uid, published_by_name: byName }, { onConflict: "month" });
         if (error) throw error;
         background(syncStarts(month));
-        return json({ ok: true, published: { days, offs, changes, publishedAt: now } });
+        return json({ ok: true, published: { days, offs, changes, publishedAt: now, publishedByName: byName } });
+      }
+
+      case "unpublish": {
+        // 公開を取り消す（スタッフの「シフト表」から見えなくなる。作成中のシフトはそのまま残る）
+        needAdmin(); needMonth();
+        const { error } = await sb.from("shift_published").delete().eq("month", month);
+        if (error) throw error;
+        await sb.from("shift_schedule").update({ changes: {} }).eq("month", month);
+        return json({ ok: true });
       }
 
       case "saveSettings": {

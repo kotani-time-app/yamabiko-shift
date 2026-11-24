@@ -128,6 +128,10 @@ textarea{min-height:70px;resize:vertical}
 .wstat span{background:#f3eee9;border-radius:999px;padding:1px 7px;color:#5b524c}
 .nmtxt.tap{display:inline-block;padding:4px 0;border-bottom:1px dashed currentColor;cursor:pointer}
 #staffDlg{border:0;border-radius:14px;padding:16px 14px;width:min(96vw,560px);max-height:88vh;overflow:auto;box-sizing:border-box}
+#askDlg{border:0;border-radius:14px;padding:18px 16px;width:min(90vw,420px);box-sizing:border-box}
+#askDlg::backdrop{background:rgba(30,20,15,.5)}
+#askDlg .acts{display:flex;gap:8px;margin-top:16px}
+#askDlg .acts .btn{flex:1}
 #staffDlg::backdrop{background:rgba(30,20,15,.5)}
 #staffDlg .dlghead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
 #staffDlg .dlgx{border:0;background:none;font-size:22px;line-height:1;padding:2px 6px;color:#6b625c}
@@ -264,6 +268,7 @@ details.sd summary::-webkit-details-marker{display:none}
     </div>
     <div class="card daydetail" id="dayDetail"></div>
     <dialog id="staffDlg"></dialog>
+    <dialog id="askDlg"></dialog>
     <div class="card">
       <h2>スタッフ別シフト・提出状況 <span class="muted" id="subCount"></span></h2>
       <div class="muted" style="margin-bottom:4px">名前をタップすると、その人の1か月のシフトがカレンダーで見られます。</div>
@@ -287,6 +292,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <h2>シフトを公開・共有</h2>
       <div id="pubState" class="muted" style="margin-bottom:10px"></div>
       <button class="btn primary" id="pubBtn" style="width:100%">この月のシフトを公開する</button>
+      <button class="btn small" id="unpubBtn" style="width:100%;margin-top:8px;display:none">公開を取り消す（スタッフから見えなくする）</button>
       <div class="muted" style="margin:12px 0 6px">LINEに送る（<span id="lineStoreName"></span>のシフト）</div>
       <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
         <a class="btn line" id="lineShift1" target="_blank" rel="noopener">LINEで送る（1日〜15日）</a>
@@ -352,7 +358,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-23a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25a</div>
   </section>
 </main>
 
@@ -979,14 +985,28 @@ details.sd summary::-webkit-details-marker{display:none}
     const m=S.listMonth, n=daysIn(m), pub=S.pub[m], sc=S.sched[m];
     const changed = pub && sc?.updatedAt && sc.updatedAt > pub.publishedAt;
     $('#pubState').innerHTML = !pub ? 'まだ公開していません。公開すると、スタッフが「シフト表」タブで見られるようになります。'
-      : `公開済み（${new Date(pub.publishedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}）${changed?' <span class="badge warn">公開後に変更あり</span>':''}`;
+      : `公開済み（${pub.publishedByName?esc(pub.publishedByName)+'が':''}${new Date(pub.publishedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}に公開）${changed?' <span class="badge warn">公開後に変更あり</span>':''}`;
+    $('#unpubBtn').style.display = pub ? '' : 'none';
     $('#pubBtn').textContent = pub ? (changed?'変更を反映して再公開する':'もう一度公開する') : 'この月のシフトを公開する';
     const st=S.storeFilter; $('#lineStoreName').innerHTML = st==='all'?'全店舗':storeSpan(st);
     $('#lineShift1').href=lineUrl(shiftText(m,st,1,15));
     $('#lineShift2').href=lineUrl(shiftText(m,st,16,n));
   }
+  // 確認ダイアログ（OKでtrue）
+  function ask(title,body,ok){ return new Promise(res=>{ const d=$('#askDlg');
+    d.innerHTML=`<b style="font-size:17px">${title}</b><div style="margin-top:8px;line-height:1.6">${body}</div><div class="acts"><button class="btn" data-a="0">やめる</button><button class="btn primary" data-a="1">${ok}</button></div>`;
+    d.onclick=e=>{ const b=e.target.closest('[data-a]'); if(b||e.target===d){ d.close(); res(!!b&&b.dataset.a==='1'); } };
+    d.oncancel=()=>res(false); d.showModal(); }); }
+  $('#unpubBtn').onclick=async()=>{
+    const m=S.listMonth;
+    if(!await ask(`${mLabel(m)}の公開を取り消しますか？`,'スタッフの「シフト表」から見えなくなります。作成中のシフトはそのまま残るので、あとでもう一度公開できます。','取り消す')) return;
+    try{ await api('unpublish',{month:m}); S.pub[m]=null; renderPubState(); toast(`${mLabel(m)}の公開を取り消しました`); }
+    catch(err){ toast('取り消せませんでした'); }
+  };
   $('#pubBtn').onclick=async()=>{
-    const m=S.listMonth; await writeChain;
+    const m=S.listMonth, pub=S.pub[m];
+    if(!await ask(pub?`${mLabel(m)}のシフトを再公開しますか？`:`${mLabel(m)}のシフトを公開しますか？`, pub?'今の作成内容でスタッフの「シフト表」を更新します。':'公開すると、スタッフ全員が「シフト表」タブで見られるようになります。', pub?'再公開する':'公開する')) return;
+    await writeChain;
     try{ const r=await api('publish',{month:m}); S.pub[m]=r.published; renderPubState(); toast(`${mLabel(m)}のシフトを公開しました`); }
     catch(err){ toast(err.code==='forbidden'?'公開する権限がありません':'公開できませんでした'); }
   };
