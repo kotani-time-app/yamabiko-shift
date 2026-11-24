@@ -70,6 +70,10 @@ function staffShape(st: any, reqs: any[], admin = false) {
   return base;
 }
 
+function pubShape(r: any) {
+  return r ? { days: r.days, offs: r.offs, changes: r.changes ?? {}, publishedAt: r.published_at, publishedByName: r.published_by_name ?? null, stores: r.stores ?? {} } : null;
+}
+
 function cleanDays(days: unknown) {
   const out: Record<string, string> = {};
   if (!days || typeof days !== "object") return out;
@@ -307,7 +311,7 @@ Deno.serve(async (req) => {
       case "published": {
         needMonth();
         const { data } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
-        return json({ published: data ? { days: data.days, offs: data.offs, changes: data.changes ?? {}, publishedAt: data.published_at, publishedByName: data.published_by_name ?? null } : null, settings: await publicSettings(settings) });
+        return json({ published: pubShape(data), settings: await publicSettings(settings) });
       }
 
       case "adminData": {
@@ -322,7 +326,7 @@ Deno.serve(async (req) => {
         return json({
           all,
           schedule: sched ? { days: sched.days, updatedAt: sched.updated_at } : { days: {} },
-          published: pub ? { days: pub.days, offs: pub.offs, changes: pub.changes ?? {}, publishedAt: pub.published_at, publishedByName: pub.published_by_name ?? null } : null,
+          published: pubShape(pub),
           settings: await publicSettings(settings),
         });
       }
@@ -351,41 +355,75 @@ Deno.serve(async (req) => {
       }
 
       case "publish": {
+        // 店舗ごとに公開できる（store なし＝全店舗）。他の店舗の公開内容はそのまま残す
         needAdmin(); needMonth();
-        const [{ data: sched }, { data: staff }] = await Promise.all([
+        const allStores = (settings.data.stores as string[]) ?? [];
+        const targets = typeof body.store === "string" && allStores.includes(body.store) ? [body.store] : allStores;
+        const [{ data: sched }, { data: staff }, { data: prev }] = await Promise.all([
           sb.from("shift_schedule").select("*").eq("month", month).maybeSingle(),
-          sb.from("shift_staff").select("id,name,nickname"),
+          sb.from("shift_staff").select("id,name,nickname,store"),
+          sb.from("shift_published").select("*").eq("month", month).maybeSingle(),
         ]);
         const byId = new Map((staff ?? []).map((s) => [s.id, s]));
-        const days: Record<string, unknown[]> = {};
+        const now = new Date().toISOString();
+        const byName = meRow?.nickname || meRow?.name || "店長";
+        const stores: Record<string, unknown> = { ...((prev?.stores ?? {}) as Record<string, unknown>) };
+        for (const t of targets) stores[t] = { at: now, byName };
+        const pubStores = Object.keys(stores);
+        const days: Record<string, any[]> = {};
+        // 今回公開しない店舗の分は、前回公開した内容のまま
+        for (const [d, list] of Object.entries((prev?.days ?? {}) as Record<string, any[]>)) {
+          const keep = list.filter((x) => !targets.includes(x.store) && pubStores.includes(x.store));
+          if (keep.length) days[d] = keep;
+        }
         const offs: Record<string, string[]> = {};
         for (const [d, m] of Object.entries((sched?.days ?? {}) as Record<string, Record<string, unknown>>)) {
-          const list: any[] = [];
           for (const [id, v] of Object.entries(m)) {
-            if (v === "off") { (offs[d] ??= []).push(id); continue; }
-            if (!Array.isArray(v)) continue;
             const st = byId.get(id);
-            for (const g of v as any[]) list.push({ uid: id, name: st?.nickname || st?.name || "", store: g.store, s: g.s, e: g.e });
+            if (v === "off") { if (st?.store && pubStores.includes(st.store)) (offs[d] ??= []).push(id); continue; }
+            if (!Array.isArray(v)) continue;
+            for (const g of v as any[]) if (targets.includes(g.store)) (days[d] ??= []).push({ uid: id, name: st?.nickname || st?.name || "", store: g.store, s: g.s, e: g.e });
           }
-          list.sort((a, b) => a.store.localeCompare(b.store, "ja") || a.s.localeCompare(b.s) || a.name.localeCompare(b.name, "ja"));
-          if (list.length) days[d] = list;
         }
-        const now = new Date().toISOString();
+        for (const d of Object.keys(days)) days[d].sort((a, b) => a.store.localeCompare(b.store, "ja") || a.s.localeCompare(b.s) || a.name.localeCompare(b.name, "ja"));
         const changes = (sched?.changes ?? {}) as Record<string, unknown>;
-        const byName = meRow?.nickname || meRow?.name || "店長";
-        const { error } = await sb.from("shift_published").upsert({ month, days, offs, changes, published_at: now, published_by: uid, published_by_name: byName }, { onConflict: "month" });
+        const row = { month, days, offs, changes, stores, published_at: now, published_by: uid, published_by_name: byName };
+        const { error } = await sb.from("shift_published").upsert(row, { onConflict: "month" });
         if (error) throw error;
         background(syncStarts(month));
-        return json({ ok: true, published: { days, offs, changes, publishedAt: now, publishedByName: byName } });
+        return json({ ok: true, published: pubShape(row) });
       }
 
       case "unpublish": {
-        // 公開を取り消す（スタッフの「シフト表」から見えなくなる。作成中のシフトはそのまま残る）
+        // 公開を取り消す（store なし＝全店舗）。作成中のシフトはそのまま残る
         needAdmin(); needMonth();
-        const { error } = await sb.from("shift_published").delete().eq("month", month);
+        const { data: prev } = await sb.from("shift_published").select("*").eq("month", month).maybeSingle();
+        if (!prev) return json({ ok: true, published: null });
+        const allStores = (settings.data.stores as string[]) ?? [];
+        const target = typeof body.store === "string" && allStores.includes(body.store) ? body.store : null;
+        const stores: Record<string, unknown> = { ...((prev.stores ?? {}) as Record<string, unknown>) };
+        if (target) delete stores[target];
+        if (!target || !Object.keys(stores).length) {
+          const { error } = await sb.from("shift_published").delete().eq("month", month);
+          if (error) throw error;
+          await sb.from("shift_schedule").update({ changes: {} }).eq("month", month);
+          return json({ ok: true, published: null });
+        }
+        const days: Record<string, any[]> = {};
+        for (const [d, list] of Object.entries((prev.days ?? {}) as Record<string, any[]>)) {
+          const keep = list.filter((x) => x.store !== target);
+          if (keep.length) days[d] = keep;
+        }
+        const { data: staff } = await sb.from("shift_staff").select("id,store");
+        const homeOf = new Map((staff ?? []).map((s) => [s.id, s.store]));
+        const offs: Record<string, string[]> = {};
+        for (const [d, ids] of Object.entries((prev.offs ?? {}) as Record<string, string[]>)) {
+          const keep = ids.filter((id) => homeOf.get(id) !== target);
+          if (keep.length) offs[d] = keep;
+        }
+        const { data: row, error } = await sb.from("shift_published").update({ days, offs, stores }).eq("month", month).select("*").single();
         if (error) throw error;
-        await sb.from("shift_schedule").update({ changes: {} }).eq("month", month);
-        return json({ ok: true });
+        return json({ ok: true, published: pubShape(row) });
       }
 
       case "saveSettings": {

@@ -358,7 +358,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25a</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25b</div>
   </section>
 </main>
 
@@ -981,14 +981,21 @@ details.sd summary::-webkit-details-marker{display:none}
     lines.push('', 'アプリでも確認できます', PAGE_URL);
     return lines.join('\n');
   }
+  const fmtAt=x=>new Date(x).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
   function renderPubState(){
-    const m=S.listMonth, n=daysIn(m), pub=S.pub[m], sc=S.sched[m];
-    const changed = pub && sc?.updatedAt && sc.updatedAt > pub.publishedAt;
-    $('#pubState').innerHTML = !pub ? 'まだ公開していません。公開すると、スタッフが「シフト表」タブで見られるようになります。'
-      : `公開済み（${pub.publishedByName?esc(pub.publishedByName)+'が':''}${new Date(pub.publishedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}に公開）${changed?' <span class="badge warn">公開後に変更あり</span>':''}`;
-    $('#unpubBtn').style.display = pub ? '' : 'none';
-    $('#pubBtn').textContent = pub ? (changed?'変更を反映して再公開する':'もう一度公開する') : 'この月のシフトを公開する';
-    const st=S.storeFilter; $('#lineStoreName').innerHTML = st==='all'?'全店舗':storeSpan(st);
+    const m=S.listMonth, n=daysIn(m), pub=S.pub[m], sc=S.sched[m], st=S.storeFilter, ps=pub?.stores||{};
+    const stores=S.settings.stores||[];
+    const line=s=>{ const x=ps[s]; if(!x) return `<div>${storeSpan(s)}：<b>未公開</b></div>`;
+      const changed=sc?.updatedAt && sc.updatedAt>x.at;
+      return `<div>${storeSpan(s)}：公開済み（${x.byName?esc(x.byName)+'が':''}${fmtAt(x.at)}に公開）${changed?' <span class="badge warn">公開後に変更あり</span>':''}</div>`; };
+    const targets = st==='all' ? stores : [st];
+    $('#pubState').innerHTML = targets.map(line).join('') + '<div style="margin-top:6px">店舗ごとに公開できます。上の店舗ボタンで切り替えてください。</div>';
+    const label = st==='all' ? '全店舗' : st;
+    const anyPub = targets.some(s=>ps[s]), allPub = targets.every(s=>ps[s]);
+    $('#unpubBtn').style.display = anyPub ? '' : 'none';
+    $('#unpubBtn').textContent = `${label}の公開を取り消す`;
+    $('#pubBtn').textContent = allPub ? `${label}のシフトを再公開する` : `${label}のシフトを公開する`;
+    $('#lineStoreName').innerHTML = st==='all'?'全店舗':storeSpan(st);
     $('#lineShift1').href=lineUrl(shiftText(m,st,1,15));
     $('#lineShift2').href=lineUrl(shiftText(m,st,16,n));
   }
@@ -998,16 +1005,17 @@ details.sd summary::-webkit-details-marker{display:none}
     d.onclick=e=>{ const b=e.target.closest('[data-a]'); if(b||e.target===d){ d.close(); res(!!b&&b.dataset.a==='1'); } };
     d.oncancel=()=>res(false); d.showModal(); }); }
   $('#unpubBtn').onclick=async()=>{
-    const m=S.listMonth;
-    if(!await ask(`${mLabel(m)}の公開を取り消しますか？`,'スタッフの「シフト表」から見えなくなります。作成中のシフトはそのまま残るので、あとでもう一度公開できます。','取り消す')) return;
-    try{ await api('unpublish',{month:m}); S.pub[m]=null; renderPubState(); toast(`${mLabel(m)}の公開を取り消しました`); }
+    const m=S.listMonth, st=S.storeFilter, label=st==='all'?'全店舗':st;
+    if(!await ask(`${mLabel(m)}・${label}の公開を取り消しますか？`,`スタッフの「シフト表」から${label}のシフトが見えなくなります。作成中のシフトはそのまま残るので、あとでもう一度公開できます。`,'取り消す')) return;
+    try{ const r=await api('unpublish',{month:m, store:st==='all'?null:st}); S.pub[m]=r.published; renderPubState(); toast(`${label}の公開を取り消しました`); }
     catch(err){ toast('取り消せませんでした'); }
   };
   $('#pubBtn').onclick=async()=>{
-    const m=S.listMonth, pub=S.pub[m];
-    if(!await ask(pub?`${mLabel(m)}のシフトを再公開しますか？`:`${mLabel(m)}のシフトを公開しますか？`, pub?'今の作成内容でスタッフの「シフト表」を更新します。':'公開すると、スタッフ全員が「シフト表」タブで見られるようになります。', pub?'再公開する':'公開する')) return;
+    const m=S.listMonth, st=S.storeFilter, label=st==='all'?'全店舗':st, ps=S.pub[m]?.stores||{};
+    const again = (st==='all'?(S.settings.stores||[]):[st]).every(s=>ps[s]);
+    if(!await ask(`${mLabel(m)}・${label}のシフトを${again?'再公開':'公開'}しますか？`, again?`今の作成内容で、スタッフの「シフト表」の${label}のシフトを更新します。`:`公開すると、スタッフ全員が「シフト表」タブで${label}のシフトを見られるようになります。`+(st==='all'?'':'ほかの店舗には影響しません。'), again?'再公開する':'公開する')) return;
     await writeChain;
-    try{ const r=await api('publish',{month:m}); S.pub[m]=r.published; renderPubState(); toast(`${mLabel(m)}のシフトを公開しました`); }
+    try{ const r=await api('publish',{month:m, store:st==='all'?null:st}); S.pub[m]=r.published; renderPubState(); toast(`${label}のシフトを公開しました`); }
     catch(err){ toast(err.code==='forbidden'?'公開する権限がありません':'公開できませんでした'); }
   };
   $('#copyShift').onclick=async()=>{
@@ -1026,7 +1034,8 @@ details.sd summary::-webkit-details-marker{display:none}
   function renderPub(){
     const m=S.pubMonth, pub=S.pub[m], n=daysIn(m);
     $('#pLabel').textContent=mLabel(m);
-    $('#pState').innerHTML = pub?`<span class="badge ok">公開 ${new Date(pub.publishedAt).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`:'';
+    const pst=pub?.stores||{}, allSt=S.settings.stores||[];
+    $('#pState').innerHTML = pub?allSt.map(s=>pst[s]?`<span class="badge ok">${esc(s)} 公開 ${new Date(pst[s].at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}</span>`:`<span class="badge">${esc(s)} 未公開</span>`).join(' '):'';
     if(!pub){ $('#pBody').innerHTML='<div class="card empty">この月のシフトはまだ公開されていません</div>'; return; }
     const stores=S.settings.stores||[];
     const chips=[['mine','自分のシフト'],...stores.map(s=>[s,s])].map(([v,l])=>storeChip(v,l,S.pubStore===v)).join('');
@@ -1036,9 +1045,12 @@ details.sd summary::-webkit-details-marker{display:none}
       let cal=personCal(m, d=>(pub.days?.[d]||[]).filter(x=>x.uid===S.uid), d=>md?.days?.[d], d=>(pub.offs?.[d]||[]).includes(S.uid), 'final', chg);
       const chList=[]; for(let d=1;d<=n;d++){ const c=chg(d); if(c) chList.push(`<li>${dateLabel(m,d)}：${esc(c.name||'店長')}が${new Date(c.at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})}に変更</li>`); }
       if(chList.length) cal+=`<div class="chgbox"><b>✎ 公開後に変更があった日</b><ul>${chList.join('')}</ul></div>`;
-      $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card" style="padding:10px">${cal}</div>`;
+      const unpub=allSt.filter(s=>!pst[s]);
+      const note=unpub.length?`<div class="muted" style="margin-bottom:8px">${unpub.map(storeSpan).join('・')}のシフトはまだ公開されていません（「未定」と表示されます）</div>`:'';
+      $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div>${note}<div class="card" style="padding:10px">${cal}</div>`;
       return;
     }
+    if(!pst[S.pubStore]){ $('#pBody').innerHTML=`<div class="chips" style="margin-bottom:12px">${chips}</div><div class="card empty">${esc(S.pubStore)}のシフトはまだ公開されていません</div>`; return; }
     let h='';
     for(let d=1; d<=n; d++){
       const w=wd(m,d); let list=pub.days?.[d]||[];
