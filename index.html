@@ -380,7 +380,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25f</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25g</div>
   </section>
 </main>
 
@@ -925,7 +925,7 @@ details.sd summary::-webkit-details-marker{display:none}
     for(const x of days){ if(!cur || wd(m,x.d)===0){ cur={from:x.d,to:x.d,work:0,days:[]}; weeks.push(cur); } cur.to=x.d; cur.work+=x.work; cur.days.push(x); }
     // 変形なし：1日8時間超＋週の法定超（8時間超の分は除く）
     let daily=0, week=0;
-    for(const w of weeks){ let reg=0; for(const x of w.days){ daily+=Math.max(0,x.work-480); reg+=Math.min(480,x.work); } week+=Math.max(0,reg-weekly); }
+    for(const w of weeks){ let reg=0; for(const x of w.days){ daily+=Math.max(0,x.work-480); reg+=Math.min(480,x.work); } const lim=w.days.length<7?Math.floor(weekly*w.days.length/7):weekly; week+=Math.max(0,reg-lim); }   // 月をまたぐ端数の週は、週の上限を日数で按分
     const normalOt=daily+week;
     const henkeiOt=Math.max(0,total-frame);   // 予定どおりなら、月の総枠を超えた分だけ
     // 会社の基準時間（勤怠システムと同じ）＝（暦日数 − 日曜日 − 祝日）× 8時間。日曜と祝日が重なった日は2日として引く
@@ -959,7 +959,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <details class="lbmore"><summary>残業の数え方</summary>${r.henkei
         ? `1か月単位の変形労働時間制（${esc(r.L.henkeiFrom.replace('-','年')+'月')}から）：①予定が8時間を超える日はその予定、それ以外の日は8時間を超えた分 ②予定が${wk}時間を超える週はその予定、それ以外の週は${wk}時間を超えた分 ③月の合計が${hh(r.frame)}を超えた分`
         : `変形労働時間制は未適用：1日8時間・週${wk}時間を超えた分（変形労働時間制なら${hmin(r.henkeiOt)}）`}</details>
-      <div class="lbnote">※ 予定シフトからの計算です。実際の給料・残業代は勤怠の打刻（年休を含む）で決まります。週は日曜始まり・月の中の日だけで数えています。</div>
+      <div class="lbnote">※ 予定シフトからの計算です。実際の給料・残業代は勤怠の打刻（年休を含む）で決まります。週は日曜始まり。月をまたぐ週は、週の上限を月内の日数で按分しています。</div>
     </div>`;
   }
   // 出勤予定日数と、出勤時刻ごとの日数
