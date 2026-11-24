@@ -131,6 +131,8 @@ textarea{min-height:70px;resize:vertical}
 .laborbox .lbdiff{margin-top:6px;font-size:15px;color:var(--ok)}
 .laborbox .lbdiff.over{color:var(--sun)}
 .laborbox .lbsec{font-size:12px;font-weight:700;color:#8a7f78;margin-top:12px;border-top:1px dashed #e0d6ce;padding-top:8px}
+.laborbox .lbmore{font-size:12px;color:#6b625c;margin-top:8px;line-height:1.6}
+.laborbox .lbmore summary{cursor:pointer;color:#8a7f78}
 .laborbox .lbnote{font-size:12px;color:#6b625c;margin-top:8px;line-height:1.6}
 .wstat b.emp{background:#fdeee6;color:#b5532e}
 .wstat{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;margin-top:4px}
@@ -378,7 +380,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25e</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25f</div>
   </section>
 </main>
 
@@ -953,13 +955,10 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="lbrow"><span>月の上限（週${wk}時間・${daysIn(m)}日）</span><b>${hh(r.frame)}</b></div>
       <div class="lbbar"><i style="width:${bar}%;background:${diff>0?'var(--sun)':'var(--ok)'}"></i></div>
       <div class="lbdiff ${diff>0?'over':''}">${diff>0?`上限を <b>${hmin(diff)}</b> 超えています`:`上限まで あと <b>${hmin(-diff)}</b>`}</div>
-      ${r.henkei
-        ? `<div class="lbnote">1か月単位の変形労働時間制（${esc(r.L.henkeiFrom.replace('-','年')+'月')}から適用）。残業代がつくのは：<br>・1日：8時間を超える予定の日はその予定を、それ以外の日は8時間を超えて働いた分<br>・1週：${wk}時間を超える予定の週はその予定を、それ以外の週は${wk}時間を超えて働いた分<br>・1か月：合計が <b>${hh(r.frame)}</b> を超えた分</div>
-           <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.henkeiOt)}</b></div>
-           ${long.length?`<div class="lbnote">8時間を超える予定の日：${long.map(x=>`${mNum(m)}/${x.d} ${hmin(x.work)}`).join('、')}</div>`:''}`
-        : `<div class="lbnote">変形労働時間制は未適用です。今は <b>1日8時間</b>・<b>週${wk}時間</b>を超えた分が残業代になります。</div>
-           <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.normalOt)}</b></div>
-           <div class="lbrow muted"><span>（変形労働時間制なら）</span><span>${hmin(r.henkeiOt)}</span></div>`}
+      <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.ot)}</b></div>
+      <details class="lbmore"><summary>残業の数え方</summary>${r.henkei
+        ? `1か月単位の変形労働時間制（${esc(r.L.henkeiFrom.replace('-','年')+'月')}から）：①予定が8時間を超える日はその予定、それ以外の日は8時間を超えた分 ②予定が${wk}時間を超える週はその予定、それ以外の週は${wk}時間を超えた分 ③月の合計が${hh(r.frame)}を超えた分`
+        : `変形労働時間制は未適用：1日8時間・週${wk}時間を超えた分（変形労働時間制なら${hmin(r.henkeiOt)}）`}</details>
       <div class="lbnote">※ 予定シフトからの計算です。実際の給料・残業代は勤怠の打刻（年休を含む）で決まります。週は日曜始まり・月の中の日だけで数えています。</div>
     </div>`;
   }
