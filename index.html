@@ -380,7 +380,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25g</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25h</div>
   </section>
 </main>
 
@@ -950,16 +950,7 @@ details.sd summary::-webkit-details-marker{display:none}
         ? `基準時間まで <b>${hmin(r.short)}</b> 足りません`
         : `基準時間を <b>${hmin(r.excess)}</b> 超えています`}</div>
       ${r.short>0?`<div class="lbnote">特別休暇（毎月${r.special}日）を${r.used}日分あてると、${r.shortAfter>0?`まだ <b>${hmin(r.shortAfter)}</b> 足りません（給料から差し引きの対象）。`:'不足はなくなります。'}${r.special-r.used>0?`使わなかった特別休暇${r.special-r.used}日分は手当になります。`:''}</div>`
-        :`<div class="lbnote">基準時間を超えた分のうち、法定時間外（下記）にあたる時間は125%で支給されます。特別休暇${r.special}日分は使わなかった扱いで手当になります。</div>`}
-      <div class="lbsec">法定労働時間（残業の判定）</div>
-      <div class="lbrow"><span>月の上限（週${wk}時間・${daysIn(m)}日）</span><b>${hh(r.frame)}</b></div>
-      <div class="lbbar"><i style="width:${bar}%;background:${diff>0?'var(--sun)':'var(--ok)'}"></i></div>
-      <div class="lbdiff ${diff>0?'over':''}">${diff>0?`上限を <b>${hmin(diff)}</b> 超えています`:`上限まで あと <b>${hmin(-diff)}</b>`}</div>
-      <div class="lbrow"><span>予定どおり働いた場合の残業</span><b>${hmin(r.ot)}</b></div>
-      <details class="lbmore"><summary>残業の数え方</summary>${r.henkei
-        ? `1か月単位の変形労働時間制（${esc(r.L.henkeiFrom.replace('-','年')+'月')}から）：①予定が8時間を超える日はその予定、それ以外の日は8時間を超えた分 ②予定が${wk}時間を超える週はその予定、それ以外の週は${wk}時間を超えた分 ③月の合計が${hh(r.frame)}を超えた分`
-        : `変形労働時間制は未適用：1日8時間・週${wk}時間を超えた分（変形労働時間制なら${hmin(r.henkeiOt)}）`}</details>
-      <div class="lbnote">※ 予定シフトからの計算です。実際の給料・残業代は勤怠の打刻（年休を含む）で決まります。週は日曜始まり。月をまたぐ週は、週の上限を月内の日数で按分しています。</div>
+        :`<div class="lbnote">基準時間を超えた分のうち、法定時間外にあたる時間は125%で支給されます。特別休暇${r.special}日分は使わなかった扱いで手当になります。</div>`}
     </div>`;
   }
   // 出勤予定日数と、出勤時刻ごとの日数
