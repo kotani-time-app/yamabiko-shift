@@ -380,7 +380,7 @@ details.sd summary::-webkit-details-marker{display:none}
       <div class="muted" style="margin-top:8px">締切までは提出後も変更できます。締切を過ぎると、提出済みの希望は変更できなくなります（未提出の人は締切後も提出できます）。</div>
     </div>
     <button class="btn primary" id="saveSettings">設定を保存</button>
-    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25h</div>
+    <div class="muted" style="text-align:center;margin-top:16px">アプリの版：2026-11-25i</div>
   </section>
 </main>
 
@@ -914,6 +914,7 @@ details.sd summary::-webkit-details-marker{display:none}
   }
   const isEmp=p=>p?.empType==='社員';
   const SPECIAL_LEAVE_DAYS=2;   // 社員の特別休暇（毎月付与・勤怠システムの設定と同じ）
+  const BASE_EXTRA_OFF=2;       // 基準時間から引く日数（日曜・祝日のほかに毎月2日）
   function laborOf(m, segFn){
     const L={...DEFAULTS.labor,...(S.settings.labor||{})}, n=daysIn(m), weekly=L.weekly*60;
     const henkei=!!L.henkeiFrom && m>=L.henkeiFrom;
@@ -928,9 +929,9 @@ details.sd summary::-webkit-details-marker{display:none}
     for(const w of weeks){ let reg=0; for(const x of w.days){ daily+=Math.max(0,x.work-480); reg+=Math.min(480,x.work); } const lim=w.days.length<7?Math.floor(weekly*w.days.length/7):weekly; week+=Math.max(0,reg-lim); }   // 月をまたぐ端数の週は、週の上限を日数で按分
     const normalOt=daily+week;
     const henkeiOt=Math.max(0,total-frame);   // 予定どおりなら、月の総枠を超えた分だけ
-    // 会社の基準時間（勤怠システムと同じ）＝（暦日数 − 日曜日 − 祝日）× 8時間。日曜と祝日が重なった日は2日として引く
+    // 会社の基準時間 ＝（暦日数 − 日曜日 − 祝日 − 2日）× 8時間。日曜と祝日が重なった日は2日として引く。これを超えた時間を残業として計算する
     let sun=0, hol=0; for(let d=1;d<=n;d++){ if(wd(m,d)===0) sun++; if(holiday(m,d)) hol++; }
-    const baseDays=Math.max(0,n-sun-hol), base=baseDays*480, special=SPECIAL_LEAVE_DAYS;
+    const baseDays=Math.max(0,n-sun-hol-BASE_EXTRA_OFF), base=baseDays*480, special=SPECIAL_LEAVE_DAYS;
     const short=Math.max(0,base-total), used=Math.min(special,Math.floor(short/480)), shortAfter=Math.max(0,short-used*480);
     return {L,henkei,frame,total,days,weeks,normalOt,henkeiOt,ot:henkei?henkeiOt:normalOt,workDays:days.filter(x=>x.work>0).length,
       n,sun,hol,baseDays,base,short,used,shortAfter,excess:Math.max(0,total-base),special};
@@ -944,13 +945,11 @@ details.sd summary::-webkit-details-marker{display:none}
     return `<div class="laborbox">
       <b>⏱ ${mNum(m)}月の労働時間（社員）</b>
       <div class="lbsec">会社の基準時間（給料の計算）</div>
-      <div class="lbrow"><span>基準時間（${r.n}日−日曜${r.sun}日−祝日${r.hol}日＝${r.baseDays}日×8時間）</span><b>${hmin(r.base)}</b></div>
+      <div class="lbrow"><span>基準時間（${r.n}日−日曜${r.sun}日−祝日${r.hol}日−${BASE_EXTRA_OFF}日＝${r.baseDays}日×8時間）</span><b>${hmin(r.base)}</b></div>
       <div class="lbrow"><span>予定の労働時間（${r.workDays}日・休憩を除く）</span><b>${hmin(r.total)}</b></div>
-      <div class="lbdiff ${r.shortAfter>0?'over':''}">${r.short>0
+      <div class="lbdiff ${r.short>0?'':'over'}">${r.short>0
         ? `基準時間まで <b>${hmin(r.short)}</b> 足りません`
-        : `基準時間を <b>${hmin(r.excess)}</b> 超えています`}</div>
-      ${r.short>0?`<div class="lbnote">特別休暇（毎月${r.special}日）を${r.used}日分あてると、${r.shortAfter>0?`まだ <b>${hmin(r.shortAfter)}</b> 足りません（給料から差し引きの対象）。`:'不足はなくなります。'}${r.special-r.used>0?`使わなかった特別休暇${r.special-r.used}日分は手当になります。`:''}</div>`
-        :`<div class="lbnote">基準時間を超えた分のうち、法定時間外にあたる時間は125%で支給されます。特別休暇${r.special}日分は使わなかった扱いで手当になります。</div>`}
+        : r.excess>0 ? `基準時間を超えた <b>${hmin(r.excess)}</b> が残業になります` : `基準時間ちょうどです`}</div>
     </div>`;
   }
   // 出勤予定日数と、出勤時刻ごとの日数
@@ -963,7 +962,7 @@ details.sd summary::-webkit-details-marker{display:none}
   function statsHtml(p,m){ const t=workStats(p,m);
     let want=0; for(let d=1;d<=daysIn(m);d++) if(['any','time'].includes(kind(wishOf(p,m,d)))) want++;
     const lb=isEmp(p)?laborOf(m,d=>segsOf(m,d,p.id)):null;
-    return `<div class="wstat"><b class="want">希望${want}日</b><b>出勤${t.n}日</b>${lb?`<b class="emp">社員 予定${hmin(lb.total)}／基準${hmin(lb.base)}${lb.short?`（${hmin(lb.short)}不足）`:''}</b>`:''}${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
+    return `<div class="wstat"><b class="want">希望${want}日</b><b>出勤${t.n}日</b>${lb?`<b class="emp">社員 予定${hmin(lb.total)}／基準${hmin(lb.base)}${lb.short?`（${hmin(lb.short)}不足）`:lb.excess?`（残業${hmin(lb.excess)}）`:''}</b>`:''}${t.by.map(([s,c])=>`<span>${lab(s)}〜 ${c}日</span>`).join('')}</div>`; }
   // 日ごとの欄で名前をタップ → その人の1か月カレンダーを重ねて表示
   function renderStaffDlg(){
     const dlg=$('#staffDlg'), uid=dlg.dataset.uid, m=S.listMonth, p=people().find(x=>x.id===uid);
